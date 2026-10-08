@@ -28,74 +28,31 @@ with tab1:
             st.error("❌ 請先輸入您的專屬密碼！")
         elif not uploaded_files:
             st.error("❌ 請至少選擇一張照片！")
-        else:
+            else:
             with st.spinner("照片上傳中..."):
-               with st.spinner("照片上傳中..."):
-    try:
-        # 執行查詢
-        response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
-        
-        # 檢查是否有找到對應密碼的資料
-        if not response.data:
-            st.error("❌ 密碼錯誤，拒絕上傳。")
-        else:
-            student = response.data[0]
-            seat_no = student['seat_no']
-            name = student['name']
-            success_count = 0
-            
-            # ... 後續處理檔案上傳的迴圈 ...
-            
-    except Exception as e:
-        st.error("⚠️ 資料庫查詢發生錯誤，請聯絡管理員！")
-        # 在 Streamlit 畫面上印出詳細錯誤，方便你抓出到底是什麼原因（如 RLS 權限問題）
-        st.code(str(e))
-
-                response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
-                if not response.data:
-                    st.error("❌ 密碼錯誤，拒絕上傳。")
-                else:
-                    student = response.data[0]
-                    seat_no = student['seat_no']
-                    name = student['name']
-                    success_count = 0
-                    for idx, file in enumerate(uploaded_files):
-                        file_ext = file.name.split('.')[-1]
-                        # 🔒 終極純數字命名防呆，完美繞過所有中文阻擋與引號打架錯誤
-                        new_filename = f"{seat_no}_{idx+1}.{file_ext}"
-                        try:
-                            supabase.storage.from_("photos").upload(path=new_filename, file=file.read(), file_options={"content-type": file.type})
-                            success_count += 1
-                        except Exception as e:
-                            st.error(f"❌ 上傳失敗: {str(e)}")
-                    if success_count > 0:
-                        st.success(f"🎉 恭喜 {name} 同學！成功上傳 {success_count} 張照片！")
-
-# --- 查詢功能 ---
-with tab2:
-    st.header("個人相片查詢台")
-    st.info("💡 為了保護隱私，預設畫面為空白。請在下方輸入您的密碼解鎖照片。")
-    query_password = st.text_input("請輸入您的專屬密碼解鎖：", type="password", key="pwd_query")
-    
-    if st.button("🔓 解鎖我的照片"):
-        if not query_password:
-            st.error("❌ 請輸入密碼！")
-        else:
-            with st.spinner("正在查詢..."):
-                response = supabase.table("grad_album").select("*").eq("password", query_password).execute()
-                if not response.data:
-                    st.error("❌ 密碼錯誤。")
-                else:
-                    student = response.data[0]
-                    seat_no = student['seat_no']
-                    st.success(f"👋 歡迎回來，{student['name']} 同學！您已上傳的照片：")
-                    storage_files = supabase.storage.from_("photos").list(path="")
-                    my_photos_urls = [supabase.storage.from_("photos").get_public_url(f['name']) for f in storage_files if f['name'].startswith(f"{seat_no}_")]
+                try:
+                    # 1. 執行查詢
+                    response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
                     
-                    if not my_photos_urls:
-                        st.warning("你目前還沒有上傳過任何照片喔！")
+                    # 2. 檢查是否有找到對應密碼的資料
+                    if not response.data:
+                        st.error("❌ 密碼錯誤，拒絕上傳。")
                     else:
-                        cols = st.columns(3)
-                        for idx, url in enumerate(my_photos_urls):
-                            with cols[idx % 3]:
-                                st.image(url, use_column_width=True)
+                        # 這裡要改成 response.data[0]，因為 data 回傳的是一個 List（列表）
+                        student = response.data[0]
+                        seat_no = student['seat_no']
+                        name = student['name']
+                        success_count = 0
+                        
+                        # 3. 處理檔案上傳的迴圈（將你原本第 61 行以後的內容放進來）
+                        for idx, file in enumerate(uploaded_files):
+                            file_ext = file.name.split('.')[-1]
+                            # 終極純數字命名防呆
+                            new_filename = f"{seat_no}_{idx+1}.{file_ext}"
+                            
+                            # ... 你的上傳邏輯（supabase.storage...）放在這裡 ...
+                            
+                except Exception as e:
+                    st.error("⚠️ 資料庫查詢發生錯誤，請聯絡管理員！")
+                    # 這行非常重要！它會把真正的錯誤原因顯示在畫面上，請截圖給我看
+                    st.code(str(e))
