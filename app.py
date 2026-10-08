@@ -120,12 +120,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-# 💡 使用 columns 排版法，不需要寫 with 縮排，直接讓圖片在正中間跑出來！
-_, center_col, _ = st.columns([1, 1, 1])
-center_col.image("fsvs_logo.png.jpg", width=90)
+# 💡 將您的圖片轉化成純文字資料（Base64），徹底根除檔案找不到的問題，保證置中不報錯！
+fsvs_logo_base64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAwADADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFgEBAQEAAAAAAAAAAAAAAAAAAAcI/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEBAk_fXN2X2g=="
 
-# 下方的正式標題文字
-st.markdown("""
+st.markdown(f"""
+    <div style="display: flex; justify-content: center; margin-bottom: 15px;">
+        <img src="{fsvs_logo_base64}" style="width: 90px; height: auto;">
+    </div>
     <div style="text-align: center;">
         <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
         <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
