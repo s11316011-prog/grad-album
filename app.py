@@ -120,20 +120,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-import base64
 
-try:
-    # 🎯 安全讀取您在 GitHub 上的本機圖片
-    with open("fsvs_logo.png.jpg", "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read()).decode()
-    
-    # 🎨 利用網頁語法強迫您自己的圖片「水平置中」
-    st.markdown(f"""
-        <div style="display: flex; justify-content: center; margin-bottom: 15px;">
-            <img src="data:image/jpeg;base64,{encoded_string}" style="width: 90px; height: auto;">
-        </div>
-        <div style="text-align: center;">
-            <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
+st.image("fsvs_logo.png.jpg", width=90)
+             <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
             <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
         </div>
     """, unsafe_allow_html=True)
