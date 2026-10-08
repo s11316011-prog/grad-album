@@ -120,11 +120,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-# 💡 這行是用來顯示圖片，並加上「圖片置中」的官方參數
-st.image("fsvs_logo.png.jpg", width=90, channels="RGB")
+# 💡 使用 columns 排版法，不需要寫 with 縮排，直接讓圖片在正中間跑出來！
+_, center_col, _ = st.columns([1, 1, 1])
+center_col.image("fsvs_logo.png.jpg", width=90)
 
-# 💡 這行用來顯示下方置中的文字
-st.markdown('<div style="text-align: center;"><div class="main-title">國立鳳山高級商工職業學校</div><div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div></div>', unsafe_allow_html=True)
+# 下方的正式標題文字
+st.markdown("""
+    <div style="text-align: center;">
+        <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
+        <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
+    </div>
+""", unsafe_allow_html=True)
 
 
 
