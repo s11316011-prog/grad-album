@@ -5,6 +5,7 @@ import time
 # 🔑 從 Streamlit Secrets 安全讀取金鑰
 SUPABASE_URL = "https://yxbjluynjjxyjkrmihyz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YmpsdXluamp4eWprcm1paHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NTg1NzAsImV4cCI6MjEwNzAzNDU3MH0.QtslxkyN1z5gMTAgYX5HHn6kQlqNU1sXtghTSFA8vjE"
+
 @st.cache_resource
 def get_supabase_client():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -119,7 +120,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-# 透過 Wikipedia 的鳳商校徽 SVG / PNG 網址直接渲染，確保官方感
 st.markdown("""
     <div class="logo-container">
         <img class="logo-img" src="https://wikimedia.org">
@@ -158,7 +158,6 @@ with tab1:
                         success_count = 0
                         for idx, file in enumerate(uploaded_files):
                             file_ext = file.name.split(".")[-1]
-                            # 自動變更檔名：座號_序號_時間戳記.副檔名
                             new_filename = f"{seat_no}_{idx}_{int(time.time())}.{file_ext}"
                             try:
                                 supabase.storage.from_("photos").upload(
@@ -171,6 +170,8 @@ with tab1:
                                 st.error(f"{file.name} 上傳失敗: {str(e)}")
                                 
                         if success_count > 0:
+                            # 🔔 上傳成功時，在網頁最上方彈出通知
+                            st.toast(f"🎉 成功上傳 {success_count} 張相片！", icon="🚀")
                             st.success(f"【上傳成功】恭喜 {name} 同學！已成功匯入 {success_count} 張照片至畢業紀念冊資料庫。")
                 except Exception as db_err:
                     st.error(f"系統連線異常，請洽系統管理員: {str(db_err)}")
@@ -182,7 +183,6 @@ with tab2:
     
     query_password = st.text_input("請輸入您的專屬密碼解鎖：", type="password", key="pwd_query")
     
-    # 初始化 Session State 防止 Streamlit 重新整理導致解鎖消失
     if "is_unlocked" not in st.session_state:
         st.session_state["is_unlocked"] = False
         
@@ -201,6 +201,10 @@ with tab2:
                         st.session_state["is_unlocked"] = True
                         student = raw_data[0]
                         seat_no = student["seat_no"]
+                        
+                        # 🔔 驗證通過時，立即在網頁最上方彈出通知！
+                        st.toast(f"🔑 {student['name']} 同學，相簿已成功解鎖！", icon="🔓")
+                        
                         st.success(f"驗證通過。歡迎回來，{student['name']} 同學。以下為您已上傳的照片：")
                         
                         # 從雲端儲存空間撈取該學生照片
@@ -214,7 +218,7 @@ with tab2:
                         if not my_photos_urls:
                             st.warning("您目前在此系統中尚未有任何照片紀錄。")
                         else:
-                            # 三欄式精美相簿網格
+                            # 📷 圖片格子位置：直接放在驗證成功訊息的下方，呈三欄精美排列
                             cols = st.columns(3)
                             for idx, url in enumerate(my_photos_urls):
                                 with cols[idx % 3]:
