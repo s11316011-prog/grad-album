@@ -1,54 +1,78 @@
 import streamlit as st
+from supabase import create_client, Client
 
-# --- 這裡通常是您前面的其它 UI 元件，例如標題或欄位輸入 ---
-# st.title("🎓 畢業紀念冊照片上傳系統")
+# 🔑 請確認以下這兩行，有沒有精準填入您在 Supabase 複製的通行證：
+SUPABASE_URL = "sb_publishable_s92CKRs9R7gtZ47-sC155A_s_mN_pbD"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YmpsdXluamp4eWprcm1paHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NTg1NzAsImV4cCI6MjEwNzAzNDU3MH0.QtslxkyN1z5gMTAgYX5HHn6kQlqNU1sXtghTSFA8vjE"
 
-# 使用邊框容器（Border Container）打造卡片式現代化 UI
-with st.container(border=True):
-    st.markdown("### 🔑 安全驗證與檔案上傳")
-    st.info("💡 提示：請先輸入您的個人專屬密碼，並選擇欲上傳的照片。")
+@st.cache_resource
+def get_supabase_client():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+supabase: Client = get_supabase_client()
+
+st.set_page_config(page_title="畢業紀念冊照片收集網頁", page_icon="🎓", layout="centered")
+st.title("🎓 畢業紀念冊・照片收集中心")
+st.write("你好！請輸入在學校信箱中的 **專屬 4 位數密碼** 來上傳或查詢照片。")
+
+tab1, tab2 = st.tabs(["📥 我要上傳照片", "🔍 確認我的上傳狀態"])
+
+# --- 上傳功能 ---
+with tab1:
+    st.header("上傳個人寫真")
+    upload_password = st.text_input("請輸入您的專屬密碼：", type="password", key="pwd_upload")
+    uploaded_files = st.file_uploader("請選擇要上傳的照片（可多選）：", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
     
-    # 建立左右兩欄，使排版更精簡美觀
-    col1, col2 = st.columns(2)
-    with col1:
-        upload_password = st.text_input("輸入專屬密碼", type="password", placeholder="請輸入密碼...")
-    with col2:
-        uploaded_files = st.file_uploader("選擇照片 (可多選)", accept_multiple_files=True, type=["png", "jpg", "jpeg"])
-
-    st.markdown("---") # 分隔線
-
-    # 調大按鈕視覺寬度並加上引導 Icon
-    if st.button("🚀 確認送出並開始上傳", use_container_width=True):
-        
-        # 1. 前端欄位防呆檢查
+    if st.button("🚀 確認送出上傳"):
         if not upload_password:
             st.error("❌ 請先輸入您的專屬密碼！")
-            
         elif not uploaded_files:
-            st.warning("⚠️ 請至少選擇一張照片！")
-            
+            st.error("❌ 請至少選擇一張照片！")
         else:
-            # 2. 通過欄位檢查，啟動讀取動畫與資料庫查詢
-            with st.spinner("⏳ 正在驗證身份並準備上傳，請稍候..."):
-                try:
-                    # 執行 Supabase 資料庫查詢
-                    response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
+            with st.spinner("照片上傳中..."):
+                response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
+                if not response.data:
+                    st.error("❌ 密碼錯誤，拒絕上傳。")
+                else:
+                    student = response.data[0]  # 修改防呆邏輯
+                    seat_no = student['seat_no']
+                    name = student['name']
+                    success_count = 0
+                    for file in uploaded_files:
+                        new_filename = f"{seat_no}_{name}_{file.name}"
+                        try:
+                            supabase.storage.from_("photos").upload(path=new_filename, file=file.read(), file_options={"content-type": file.type})
+                            success_count += 1
+                        except Exception as e:
+                            st.error(f"❌ {file.name} 上傳失敗: {str(e)}")
+                    if success_count > 0:
+                        st.success(f"🎉 恭喜 {name} 同學！成功上傳 {success_count} 張照片！")
+
+# --- 查詢功能 ---
+with tab2:
+    st.header("個人相片查詢台")
+    st.info("💡 為了保護隱私，預設畫面為空白。請在下方輸入您的密碼解鎖照片。")
+    query_password = st.text_input("請輸入您的專屬密碼解鎖：", type="password", key="pwd_query")
+    
+    if st.button("🔓 解鎖我的照片"):
+        if not query_password:
+            st.error("❌ 請輸入密碼！")
+        else:
+            with st.spinner("正在查詢..."):
+                response = supabase.table("grad_album").select("*").eq("password", query_password).execute()
+                if not response.data:
+                    st.error("❌ 密碼錯誤。")
+                else:
+                    student = response.data[0]  # 修改防呆邏輯
+                    seat_no = student['seat_no']
+                    st.success(f"👋 歡迎回來，{student['name']} 你已上傳的照片：")
+                    storage_files = supabase.storage.from_("photos").list(path="")
+                    my_photos_urls = [supabase.storage.from_("photos").get_public_url(f['name']) for f in storage_files if f['name'].startswith(f"{seat_no}_")]
                     
-                    # 3. 檢查資料庫是否有找到對應密碼的資料
-                    if not response.data:
-                        st.error("❌ 密碼錯誤，拒絕上傳。請確認後再試一次！")
+                    if not my_photos_urls:
+                        st.warning("你目前還沒有上傳過任何照片喔！")
                     else:
-                        # 4. 成功獲取資料，自動取出 List 中的首筆項目
-                        student = response.data[0]
-                        seat_no = student.get('seat_no', '未知')
-                        name = student.get('name', '未知')
-                        
-                        # 顯示歡迎提示卡片
-                        st.success(f"✅ 身份驗證成功！歡迎您，【座號 {seat_no}】{name} 同學。")
-                        
-                        # ---- 🚀 這裡接您原本處理「照片上傳到儲存空間」的後續代碼 ----
-                        # 例如：for file in uploaded_files: ...
-                        
-                except Exception as e:
-                    # 補捉所有資料庫或執行期的異常錯誤，防範程式崩潰
-                    st.error(f"⚠️ 系統發生未知錯誤，請聯絡管理員。錯誤訊息: {e}")
+                        cols = st.columns(3)
+                        for idx, url in enumerate(my_photos_urls):
+                            with cols[idx % 3]:
+                                st.image(url, use_column_width=True)
