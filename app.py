@@ -132,6 +132,7 @@ st.markdown("""
 tab1, tab2 = st.tabs(["📷 我要上傳照片", "🔍 確認我的上傳狀態"])
 
 # --- 上傳功能 ---
+# --- 上傳功能 ---
 with tab1:
     st.markdown("<h4 style='color: #0F2547; font-weight: 600; margin-bottom: 15px;'>照片檔案上傳</h4>", unsafe_allow_html=True)
     
@@ -151,13 +152,14 @@ with tab1:
                     if not raw_data:
                         st.error("密碼驗證失敗，拒絕上傳。")
                     else:
-                        student = raw_data[0]
+                        student = raw_data[0] # 確保精準讀取學生資料
                         seat_no = student["seat_no"]
                         name = student["name"]
                         
                         success_count = 0
                         for idx, file in enumerate(uploaded_files):
                             file_ext = file.name.split(".")[-1]
+                            # 自動變更檔名：座號_序號_時間戳記.副檔名
                             new_filename = f"{seat_no}_{idx}_{int(time.time())}.{file_ext}"
                             try:
                                 supabase.storage.from_("photos").upload(
@@ -170,9 +172,8 @@ with tab1:
                                 st.error(f"{file.name} 上傳失敗: {str(e)}")
                                 
                         if success_count > 0:
-                            # 🔔 上傳成功時，在網頁最上方彈出通知
-                            st.toast(f"🎉 成功上傳 {success_count} 張相片！", icon="🚀")
-                            st.success(f"【上傳成功】恭喜 {name} 同學！已成功匯入 {success_count} 張照片至畢業紀念冊資料庫。")
+                            # ✨【完美排版】與 tab2 風格一致，只留座號、姓名與成功張數，且沒有任何不舒服的右上角彈出通知
+                            st.success(f"🎉 上傳成功｜座號：{seat_no} 號 — {name} 同學，已成功匯入 {success_count} 張相片！")
                 except Exception as db_err:
                     st.error(f"系統連線異常，請洽系統管理員: {str(db_err)}")
 
