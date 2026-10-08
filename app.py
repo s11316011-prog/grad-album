@@ -26,10 +26,11 @@ with tab1:
     if st.button("🚀 確認送出上傳"):
         if not upload_password:
             st.error("❌ 請先輸入您的專屬密碼！")
-        elif not uploaded_files:
-            st.error("❌ 請至少選擇一張照片！")
-                with st.spinner("照片上傳中..."):
-                 try:
+    elif not uploaded_files:
+        st.error("❌ 請至少選擇一張照片！")
+    else:
+        with st.spinner("照片上傳中..."):
+
                     # 1. 執行查詢
                     response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
                     
