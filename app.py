@@ -3,7 +3,7 @@ from supabase import create_client, Client
 import time
 
 # 🔑 從 Streamlit Secrets 安全讀取金鑰
-SUPABASE_URL = st.secrets["https://yxbjluynjjxyjkrmihyz.supabase.co/rest/v1/"]
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YmpsdXluamp4eWprcm1paHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NTg1NzAsImV4cCI6MjEwNzAzNDU3MH0.QtslxkyN1z5gMTAgYX5HHn6kQlqNU1sXtghTSFA8vjE"]
 
 @st.cache_resource
