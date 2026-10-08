@@ -120,8 +120,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-# 💡 直接靠這行原生語法讀取您的圖片，沒有 with 就不會縮排錯誤！
-st.image("fsvs_logo.png.jpg", width=90)
+import os
+
+# 🎯 動態獲取 app.py 所在的絕對資料夾路徑，精準鎖定圖片位置
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+logo_path = os.path.join(BASE_DIR, "fsvs_logo.png.jpg")
+
+# 💡 使用抓取到的絕對路徑讀取圖片，徹底根除 FileNotFoundError
+st.image(logo_path, width=90)
 
 st.markdown("""
     <div style="text-align: center;">
@@ -129,6 +135,7 @@ st.markdown("""
         <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
     </div>
 """, unsafe_allow_html=True)
+
 
 
 
