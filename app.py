@@ -26,11 +26,13 @@ with tab1:
     if st.button("🚀 確認送出上傳"):
         if not upload_password:
             st.error("❌ 請先輸入您的專屬密碼！")
-    elif not uploaded_files:
-        st.error("❌ 請至少選擇一張照片！")
-    else:
-        with st.spinner("照片上傳中..."):
-
+            
+        elif not uploaded_files:
+            st.error("❌ 請至少選擇一張照片！")
+            
+        else:
+            with st.spinner("照片上傳中..."):
+                try:
                     # 1. 執行查詢
                     response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
                     
@@ -38,21 +40,13 @@ with tab1:
                     if not response.data:
                         st.error("❌ 密碼錯誤，拒絕上傳。")
                     else:
-                        # 這裡要改成 response.data[0]，因為 data 回傳的是一個 List（列表）
+                        # 這裡 data 回傳的是一個 List（列表），取第一個項目 [0]
                         student = response.data[0]
                         seat_no = student['seat_no']
                         name = student['name']
-                        success_count = 0
                         
-                        # 3. 處理檔案上傳的迴圈（將你原本第 61 行以後的內容放進來）
-                        for idx, file in enumerate(uploaded_files):
-                            file_ext = file.name.split('.')[-1]
-                            # 終極純數字命名防呆
-                            new_filename = f"{seat_no}_{idx+1}.{file_ext}"
-                            
-                            # ... 你的上傳邏輯（supabase.storage...）放在這裡 ...
-                            
+                        # ---- 這裡接你原本處理「照片上傳」的後續代碼 ----
+                        # (請確保這裡後續的代碼也是維持正確縮排)
+                        
                 except Exception as e:
-                    st.error("⚠️ 資料庫查詢發生錯誤，請聯絡管理員！")
-                    # 這行非常重要！它會把真正的錯誤原因顯示在畫面上，請截圖給我看
-                    st.code(str(e))
+                    st.error(f"⚠️ 發生未知錯誤: {e}")
