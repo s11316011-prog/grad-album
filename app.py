@@ -121,12 +121,15 @@ st.markdown("""
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
 st.markdown("""
+# --- 🏛️ 鳳山商工校徽與極正式標題 ---
+st.markdown("""
     <div class="logo-container">
         <img class="logo-img" src="https://wikimedia.org">
     </div>
     <div class="main-title">國立鳳山高級商工職業學校</div>
     <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
 """, unsafe_allow_html=True)
+
 
 # 建立分頁
 tab1, tab2 = st.tabs(["📷 我要上傳照片", "🔍 確認我的上傳狀態"])
