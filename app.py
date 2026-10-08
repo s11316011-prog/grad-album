@@ -2,7 +2,7 @@ import streamlit as st
 from supabase import create_client, Client
 
 # 🔑 請確認以下這兩行，有沒有精準填入您在 Supabase 複製的通行證：
-SUPABASE_URL = "https://yxbjluynjjxyjkrmihyz.supabase.co/rest/v1/"
+SUPABASE_URL = "https://yxbjluynjjxyjkrmihyz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YmpsdXluamp4eWprcm1paHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NTg1NzAsImV4cCI6MjEwNzAzNDU3MH0.QtslxkyN1z5gMTAgYX5HHn6kQlqNU1sXtghTSFA8vjE"
 
 @st.cache_resource
