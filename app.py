@@ -120,15 +120,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-with st.container():
-    # 直接讀取同資料夾底下的圖片
-    st.image("fsvs_logo.png", width=90)
-    st.markdown("""
-        <div style="text-align: center;">
-            <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
-            <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
-        </div>
-    """, unsafe_allow_html=True)
+# 建立三個欄位，利用中間的欄位來把校徽擠到最中間
+col1, col2, col3 = st.columns([1, 1, 1])
+with col2:
+    # 這裡的檔名已經幫您配合 GitHub 寫成 "fsvs_logo.png.jpg"
+    st.image("fsvs_logo.png.jpg", width=90)
+
+# 下方的正式標題文字繼續保持置中
+st.markdown("""
+    <div style="text-align: center;">
+        <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
+        <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
+    </div>
+""", unsafe_allow_html=True)
+
 
 
 
