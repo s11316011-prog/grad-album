@@ -39,7 +39,7 @@ with tab1:
                     name = student['name']
                     success_count = 0
                     for file in uploaded_files:
-                        new_filename = f"{seat_no}_['name']"
+                        new_filename = f"{seat_no}_[name]"
                         try:
                             supabase.storage.from_("photos").upload(path=new_filename, file=file.read(), file_options={"content-type": file.type})
                             success_count += 1
