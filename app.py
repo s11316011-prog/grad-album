@@ -30,6 +30,27 @@ with tab1:
             st.error("❌ 請至少選擇一張照片！")
         else:
             with st.spinner("照片上傳中..."):
+               with st.spinner("照片上傳中..."):
+    try:
+        # 執行查詢
+        response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
+        
+        # 檢查是否有找到對應密碼的資料
+        if not response.data:
+            st.error("❌ 密碼錯誤，拒絕上傳。")
+        else:
+            student = response.data[0]
+            seat_no = student['seat_no']
+            name = student['name']
+            success_count = 0
+            
+            # ... 後續處理檔案上傳的迴圈 ...
+            
+    except Exception as e:
+        st.error("⚠️ 資料庫查詢發生錯誤，請聯絡管理員！")
+        # 在 Streamlit 畫面上印出詳細錯誤，方便你抓出到底是什麼原因（如 RLS 權限問題）
+        st.code(str(e))
+
                 response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
                 if not response.data:
                     st.error("❌ 密碼錯誤，拒絕上傳。")
