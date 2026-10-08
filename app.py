@@ -121,8 +121,7 @@ st.markdown("""
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
 with st.container():
-    # 💡 這裡直接使用維基百科上標準的官方校徽圖片檔案網址，絕對不會破圖
-st.image("https://wikimedia.org", width=90)
+ st.image("fsvs_logo.png.jpg", width=90)
 
     st.markdown("""
         <div style="text-align: center;">
@@ -134,8 +133,6 @@ st.image("https://wikimedia.org", width=90)
 # 建立分頁
 tab1, tab2 = st.tabs(["📷 我要上傳照片", "🔍 確認我的上傳狀態"])
 
-# --- 上傳功能 ---
-# --- 上傳功能 ---
 # --- 上傳功能 ---
 with tab1:
     st.markdown("<h4 style='color: #0F2547; font-weight: 600; margin-bottom: 15px;'>照片檔案上傳</h4>", unsafe_allow_html=True)
