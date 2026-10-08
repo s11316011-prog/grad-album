@@ -122,17 +122,14 @@ st.markdown("""
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
 with st.container():
-    # 💡 在 st.markdown 裡面加上置中標籤，把 st.image 包起來
-    st.markdown('<div style="display: flex; justify-content: center;">', unsafe_allow_html=True)
-    st.image("fsvs_logo.png.jpg", width=90)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
+st.image("fsvs_logo.png.jpg", width=90)
     st.markdown("""
         <div style="text-align: center;">
             <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
             <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
         </div>
     """, unsafe_allow_html=True)
+
 
 
 # 建立分頁
