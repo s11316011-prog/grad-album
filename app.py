@@ -121,7 +121,7 @@ st.markdown("""
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
 # 🎯 沒用 with，不搞複雜程式，直接讀取您 GitHub 上的本機圖片檔案！
-st.image("fsvs_logo.png.jpg", width=90)
+st.image("fsvs_logo.png", width=90)
 
 st.markdown("""
     <div style="text-align: center;">
