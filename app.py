@@ -38,10 +38,8 @@ with tab1:
                     seat_no = student['seat_no']
                     name = student['name']
                     success_count = 0
-                    for file in uploaded_files:
-                                           success_count = 0
-                    for idx, file in enumerate(uploaded_files):
-               new_filename = f"{seat_no}_{idx+1}.{file_ext}"
+                  new_filename = f"{seat_no}_{idx+1}.{file_ext}"
+
 
                         
                         try:
