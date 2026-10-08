@@ -23,7 +23,7 @@ with tab1:
     upload_password = st.text_input("請輸入您的專屬密碼：", type="password", key="pwd_upload")
     uploaded_files = st.file_uploader("請選擇要上傳的照片（可多選）：", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
     
-    if st.button("🚀 確認送出上傳"):)
+    if st.button("🚀 確認送出上傳"):
         if not upload_password:
             st.error("❌ 請先輸入您的專屬密碼！")
         elif not uploaded_files:
