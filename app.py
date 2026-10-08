@@ -122,7 +122,7 @@ st.markdown("""
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
 st.markdown("""
     <div class="logo-container">
-        <img class="logo-img" src="https://wikimedia.org">
+    st.image("https://wikimedia.org", width=90)
     </div>
     <div class="main-title">國立鳳山高級商工職業學校</div>
     <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
