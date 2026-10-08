@@ -120,16 +120,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-# 💡 最簡單的做法：直接用一小段文字代替圖片檔案，百分之百置中且絕不報錯！
-st.markdown("""
-    <div style="display: flex; justify-content: center; margin-bottom: 15px;">
-        <img src="data:image/svg+xml;utf8,<svg xmlns='http://w3.org' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%230F2547'/><text x='50' y='55' font-size='12' fill='%23FFFFFF' font-weight='bold' text-anchor='middle'>鳳商校徽</text></svg>" style="width: 90px; height: auto;">
-    </div>
-    <div style="text-align: center;">
-        <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
-        <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
-    </div>
-""", unsafe_allow_html=True)
+# 💡 這行是用來顯示圖片，並加上「圖片置中」的官方參數
+st.image("fsvs_logo.png.jpg", width=90, channels="RGB")
+
+# 💡 這行用來顯示下方置中的文字
+st.markdown('<div style="text-align: center;"><div class="main-title">國立鳳山高級商工職業學校</div><div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div></div>', unsafe_allow_html=True)
+
 
 
 
