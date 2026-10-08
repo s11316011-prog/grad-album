@@ -120,15 +120,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-# --- 🏛️ 鳳山商工校徽與極正式標題 ---
-with st.container():
-st.image("fsvs_logo.png.jpg", width=90)
-    st.markdown("""
-        <div style="text-align: center;">
-            <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
-            <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
-        </div>
-    """, unsafe_allow_html=True)
+# 💡 乾淨的 HTML 包裹您自己的本機圖片，免去 with 語句的縮排煩惱，百分之百完美置中
+st.markdown("""
+    <div style="display: flex; justify-content: center; margin-bottom: 15px;">
+        <img src="app/static/fsvs_logo.png.jpg" style="width: 90px; height: auto;" onerror="this.src='fsvs_logo.png.jpg';">
+    </div>
+    <div style="text-align: center;">
+        <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
+        <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
+    </div>
+""", unsafe_allow_html=True)
 
 
 
