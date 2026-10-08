@@ -4,7 +4,7 @@ import time
 import requests # 👈 引入標準網路請求庫，徹底繞過有 Bug 的 SDK
 
 # 🔑 您的 Supabase 通行證：
-SUPABASE_URL = "https://supabase.co"
+SUPABASE_URL = "https://yxbjluynjjxyjkrmihyz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YmpsdXluamp4eWprcm1paHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NTg1NzAsImV4cCI6MjEwNzAuthNDU3MH0.QtslxkyN1z5gMTAgYX5HHn6kQlqNU1sXtghTSFA8vjE"
 
 @st.cache_resource
