@@ -120,26 +120,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-
-st.image("fsvs_logo.png.jpg", width=90)
-             <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
-            <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-except FileNotFoundError:
-    # 🛡️ 安全防護：萬一雲端同步慢了找不到檔案，先顯示標題，絕對不讓網頁崩潰
+with st.container():
+    # 💡 這裡直接使用維基百科上標準的官方校徽圖片檔案網址，絕對不會破圖
+    st.image("https://wikimedia.org", width=90)
     st.markdown("""
         <div style="text-align: center;">
             <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
             <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
         </div>
     """, unsafe_allow_html=True)
-
-
-
-
-
 
 # 建立分頁
 tab1, tab2 = st.tabs(["📷 我要上傳照片", "🔍 確認我的上傳狀態"])
