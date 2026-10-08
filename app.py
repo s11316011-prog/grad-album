@@ -3,7 +3,7 @@ from supabase import create_client, Client
 import time
 
 # 🔑 您的 Supabase 通行證（經過原生存取測試，完全正確）
-SUPABASE_URL = "https://supabase.co"
+SUPABASE_URL = "https://yxbjluynjjxyjkrmihyz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YmpsdXluamp4eWprcm1paHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NTg1NzAsImV4cCI6MjEwNzAzNDU3MH0.QtslxkyN1z5gMTAgYX5HHn6kQlqNU1sXtghTSFA8vjE"
 
 @st.cache_resource
