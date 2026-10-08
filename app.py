@@ -133,11 +133,9 @@ tab1, tab2 = st.tabs(["📷 我要上傳照片", "🔍 確認我的上傳狀態"
 
 # --- 上傳功能 ---
 # --- 上傳功能 ---
+# --- 上傳功能 ---
 with tab1:
-   <div class="logo-container">
-    <img class="logo-img" src="https://wikimedia.org">
-</div>
-
+    st.markdown("<h4 style='color: #0F2547; font-weight: 600; margin-bottom: 15px;'>照片檔案上傳</h4>", unsafe_allow_html=True)
     
     upload_password = st.text_input("請輸入您的專屬密碼：", type="password", key="pwd_upload", help="請輸入系統發放的個人密碼")
     uploaded_files = st.file_uploader("請選擇要上傳的照片（可多選，支援 JPG、PNG、WEBP）：", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
@@ -179,6 +177,7 @@ with tab1:
                             st.success(f"🎉 上傳成功｜座號：{seat_no} 號 — {name} 同學，已成功匯入 {success_count} 張相片！")
                 except Exception as db_err:
                     st.error(f"系統連線異常，請洽系統管理員: {str(db_err)}")
+
 
 # --- 查詢功能 ---
 # --- 查詢功能 ---
