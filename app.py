@@ -1,17 +1,15 @@
 import streamlit as st
 from supabase import create_client, Client
 import time
-import requests # 👈 引入標準網路請求庫，徹底繞過有 Bug 的 SDK
 
-# 🔑 您的 Supabase 通行證：
-SUPABASE_URL = "https://yxbjluynjjxyjkrmihyz.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YmpsdXluamp4eWprcm1paHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NTg1NzAsImV4cCI6MjEwNzAuthNDU3MH0.QtslxkyN1z5gMTAgYX5HHn6kQlqNU1sXtghTSFA8vjE"
+# 🔑 您的 Supabase 通行證（經過原生存取測試，完全正確）
+SUPABASE_URL = "https://supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4YmpsdXluamp4eWprcm1paHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NTg1NzAsImV4cCI6MjEwNzAzNDU3MH0.QtslxkyN1z5gMTAgYX5HHn6kQlqNU1sXtghTSFA8vjE"
 
 @st.cache_resource
 def get_supabase_client():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# 這裡的客戶端純粹用來處理 Storage 上傳與查詢，Storage 庫沒有 Bug，運作很安全
 supabase: Client = get_supabase_client()
 
 # --- 網頁基礎設定 ---
@@ -57,49 +55,38 @@ with tab1:
         else:
             with st.spinner("✨ 正在為您封裝照片並連線校園儲存中心..."):
                 try:
-                    # 🔥 核心修正：使用標準 HTTP 請求直接存取 PostgREST，完全避開 SDK 的 Bug
-                    api_url = f"{SUPABASE_URL}/rest/v1/grad_album"
-                    headers = {
-                        "apikey": SUPABASE_KEY,
-                        "Authorization": f"Bearer {SUPABASE_KEY}"
-                    }
-                    params = {
-                        "password": f"eq.{upload_password}",
-                        "select": "*"
-                    }
+                    # 1. 使用正規安全、帶有密鑰認證的 API 請求
+                    response = supabase.table("grad_album").select("*").eq("password", upload_password).execute()
                     
-                    req_response = requests.get(api_url, headers=headers, params=params)
+                    # 2. 精準提取其內部的原始資料列表
+                    raw_data = response.data
                     
-                    if req_response.status_code != 200:
-                        st.error(f"❌ 資料庫回應異常 (HTTP {req_response.status_code})，請聯繫管理員。")
+                    if not raw_data:
+                        st.error("❌ 密碼驗證失敗！請確認密碼是否正確，或聯繫畢聯會管理員。")
                     else:
-                        raw_data = req_response.json()
+                        # 3. 🚨 核心防崩潰修復：從資料列表中安全提取第一個學生的資料字典 (dict)
+                        student = raw_data[0] 
+                        seat_no = student['seat_no']
+                        name = student['name']
+                        success_count = 0
                         
-                        if not raw_data:
-                            st.error("❌ 密碼驗證失敗！請確認密碼是否正確，或聯繫畢聯會管理員。")
-                        else:
-                            student = raw_data[0] # 標準的 Python List dict 結構，絕對不會噴 ValidationError
-                            seat_no = student['seat_no']
-                            name = student['name']
-                            success_count = 0
+                        for idx, file in enumerate(uploaded_files):
+                            file_ext = file.name.split(".")[-1]
+                            new_filename = f"{seat_no}_{idx}_{int(time.time())}.{file_ext}"
                             
-                            for idx, file in enumerate(uploaded_files):
-                                file_ext = file.name.split(".")[-1]
-                                new_filename = f"{seat_no}_{idx}_{int(time.time())}.{file_ext}"
+                            try:
+                                supabase.storage.from_("photos").upload(
+                                    path=new_filename, 
+                                    file=file.read(), 
+                                    file_options={"content-type": file.type}
+                                )
+                                success_count += 1
+                            except Exception as e:
+                                st.error(f"❌ {file.name} 傳輸中斷: {str(e)}")
                                 
-                                try:
-                                    supabase.storage.from_("photos").upload(
-                                        path=new_filename, 
-                                        file=file.read(), 
-                                        file_options={"content-type": file.type}
-                                    )
-                                    success_count += 1
-                                except Exception as e:
-                                    st.error(f"❌ {file.name} 傳輸中斷: {str(e)}")
-                                    
-                            if success_count > 0:
-                                st.balloons() 
-                                st.success(f"🎉 成功！親愛的 {name} 同學，您已順利完成 {success_count} 張照片的投遞！")
+                        if success_count > 0:
+                            st.balloons() 
+                            st.success(f"🎉 成功！親愛的 {name} 同學，您已順利完成 {success_count} 張照片的投遞！")
                 except Exception as db_err:
                     st.error(f"❌ 系統連線異常: {str(db_err)}")
 
@@ -115,46 +102,33 @@ with tab2:
         else:
             with st.spinner("🔍 正在從畢業相冊資料庫中檢索您的照片..."):
                 try:
-                    # 🔥 核心修正：查詢分頁同樣改用標準 HTTP 請求
-                    api_url = f"{SUPABASE_URL}/rest/v1/grad_album"
-                    headers = {
-                        "apikey": SUPABASE_KEY,
-                        "Authorization": f"Bearer {SUPABASE_KEY}"
-                    }
-                    params = {
-                        "password": f"eq.{query_password}",
-                        "select": "*"
-                    }
+                    # 1. 同理，使用正規安全的 API 查詢
+                    response = supabase.table("grad_album").select("*").eq("password", query_password).execute()
+                    raw_data = response.data
                     
-                    req_response = requests.get(api_url, headers=headers, params=params)
-                    
-                    if req_response.status_code != 200:
-                        st.error(f"❌ 資料庫回應異常 (HTTP {req_response.status_code})")
+                    if not raw_data:
+                        st.error("❌ 密碼錯誤，無法解鎖。")
                     else:
-                        raw_data = req_response.json()
+                        # 2. 🚨 安全提取第一筆字典
+                        student = raw_data[0]
+                        seat_no = student['seat_no']
+                        st.success(f"👋 歡迎回來，{student['name']} 同學！以下為您已上傳的珍貴回憶：")
                         
-                        if not raw_data:
-                            st.error("❌ 密碼錯誤，無法解鎖。")
+                        storage_files = supabase.storage.from_("photos").list(path="")
+                        my_photos_urls = [
+                            supabase.storage.from_("photos").get_public_url(f['name']) 
+                            for f in storage_files 
+                            if f['name'].startswith(f"{seat_no}_")
+                        ]
+                        
+                        if not my_photos_urls:
+                            st.warning(" 偵測到您目前還沒有上傳過任何照片喔！趕快到隔壁分頁上傳吧！")
                         else:
-                            student = raw_data[0]
-                            seat_no = student['seat_no']
-                            st.success(f"👋 歡迎回來，{student['name']} 同學！以下為您已上傳的珍貴回憶：")
-                            
-                            storage_files = supabase.storage.from_("photos").list(path="")
-                            my_photos_urls = [
-                                supabase.storage.from_("photos").get_public_url(f['name']) 
-                                for f in storage_files 
-                                if f['name'].startswith(f"{seat_no}_")
-                            ]
-                            
-                            if not my_photos_urls:
-                                st.warning(" 偵測到您目前還沒有上傳過任何照片喔！趕快到隔壁分頁上傳吧！")
-                            else:
-                                cols = st.columns(3)
-                                for idx, url in enumerate(my_photos_urls):
-                                    with cols[idx % 3]:
-                                        st.markdown(f'<div class="photo-frame">', unsafe_allow_html=True)
-                                        st.image(url, use_column_width=True)
-                                        st.markdown('</div>', unsafe_allow_html=True)
+                            cols = st.columns(3)
+                            for idx, url in enumerate(my_photos_urls):
+                                with cols[idx % 3]:
+                                    st.markdown(f'<div class="photo-frame">', unsafe_allow_html=True)
+                                    st.image(url, use_column_width=True)
+                                    st.markdown('</div>', unsafe_allow_html=True)
                 except Exception as db_err:
                     st.error(f"❌ 系統連線異常: {str(db_err)}")
