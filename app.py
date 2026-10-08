@@ -39,7 +39,19 @@ with tab1:
                     name = student['name']
                     success_count = 0
                     for file in uploaded_files:
-                        new_filename = f"{seat_no}_{name}_{file.name}"
+                                           success_count = 0
+                    for idx, file in enumerate(uploaded_files):
+                        # 取得檔案的副檔名 (例如 .jpg 或 .png)
+                        file_ext = file.name.split('.')[-1]
+                        # 🔒 強制安全命名：座號_姓名_數字.副檔名 (完全丟棄原本含有空格或特殊符號的舊檔名)
+                        new_filename = f"{seat_no}_{name}_{idx+1}.{file_ext}"
+                        
+                        try:
+                            supabase.storage.from_("photos").upload(path=new_filename, file=file.read(), file_options={"content-type": file.type})
+                            success_count += 1
+                        except Exception as e:
+                            st.error(f"❌ 上傳失敗: {str(e)}")
+
                         try:
                             supabase.storage.from_("photos").upload(path=new_filename, file=file.read(), file_options={"content-type": file.type})
                             success_count += 1
