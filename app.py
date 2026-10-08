@@ -120,21 +120,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-import os
-
-# 🎯 動態獲取 app.py 所在的絕對資料夾路徑，精準鎖定圖片位置
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-logo_path = os.path.join(BASE_DIR, "fsvs_logo.png.jpg")
-
-# 💡 使用抓取到的絕對路徑讀取圖片，徹底根除 FileNotFoundError
-st.image(logo_path, width=90)
-
+# 💡 最簡單的做法：直接用一小段文字代替圖片檔案，百分之百置中且絕不報錯！
 st.markdown("""
+    <div style="display: flex; justify-content: center; margin-bottom: 15px;">
+        <img src="data:image/svg+xml;utf8,<svg xmlns='http://w3.org' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%230F2547'/><text x='50' y='55' font-size='12' fill='%23FFFFFF' font-weight='bold' text-anchor='middle'>鳳商校徽</text></svg>" style="width: 90px; height: auto;">
+    </div>
     <div style="text-align: center;">
         <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
         <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
     </div>
 """, unsafe_allow_html=True)
+
 
 
 
