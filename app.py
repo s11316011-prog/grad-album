@@ -120,16 +120,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 🏛️ 鳳山商工校徽與極正式標題 ---
-st.markdown("""
-# --- 🏛️ 鳳山商工校徽與極正式標題 ---
-st.markdown("""
-     <div class="logo-container">
-        <!-- 💡 這裡已經幫您替換成正確的官方校徽圖片檔案網址 -->
-        <img class="logo-img" src="https://wikimedia.org">
-    </div>
-    <div class="main-title">國立鳳山高級商工職業學校</div>
-    <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
-""", unsafe_allow_html=True)
+with st.container():
+    # 直接讀取同資料夾底下的圖片
+    st.image("fsvs_logo.png", width=90)
+    st.markdown("""
+        <div style="text-align: center;">
+            <div class="main-title" style="margin-top: 10px;">國立鳳山高級商工職業學校</div>
+            <div class="sub-title">116級 國三一 畢業紀念冊個人寫真照片收集系統</div>
+        </div>
+    """, unsafe_allow_html=True)
+
 
 
 # 建立分頁
