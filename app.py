@@ -178,6 +178,7 @@ with tab1:
 
 # --- 查詢功能 ---
 # --- 查詢功能 ---
+# --- 查詢功能 ---
 with tab2:
     st.markdown("<h4 style='color: #0F2547; font-weight: 600; margin-bottom: 15px;'>個人相片查詢台</h4>", unsafe_allow_html=True)
     st.info("為了保護學生個人隱私，預設畫面為空白。請在下方輸入您的專屬密碼以解鎖照片。")
@@ -200,14 +201,12 @@ with tab2:
                         st.session_state["is_unlocked"] = False
                     else:
                         st.session_state["is_unlocked"] = True
-                        student = raw_data[0]  # 修正：確保讀取陣列第一筆
+                        student = raw_data[0]  # 確保讀取陣列第一筆
                         seat_no = student["seat_no"]
+                        name = student["name"]
                         
-                        # ✨ 【調整這裡】通知放在最上面：用大字體呈現，舒服不突兀
-                        st.markdown(f"### 🔔 系統通知：已成功解鎖 {student['name']} 同學的相簿")
-                        
-                        # 接著顯示原本的綠色成功提示框
-                        st.success(f"驗證通過。歡迎回來，{student['name']} 同學。以下為您已上傳的照片：")
+                        # ✨ 【完美排版】刪除多餘大字，將通知與提示框完美合併，只留座號與姓名
+                        st.success(f"🔓 驗證通過｜座號：{seat_no} 號 — {name} 同學，以下為您已上傳的照片：")
                         
                         # 從雲端儲存空間撈取該學生照片
                         storage_files = supabase.storage.from_("photos").list(path="", options={"limit": 500})
@@ -220,7 +219,7 @@ with tab2:
                         if not my_photos_urls:
                             st.warning("您目前在此系統中尚未有任何照片紀錄。")
                         else:
-                            # 📷 照片格子一樣乖乖排在最下方
+                            # 📷 照片格子
                             cols = st.columns(3)
                             for idx, url in enumerate(my_photos_urls):
                                 with cols[idx % 3]:
