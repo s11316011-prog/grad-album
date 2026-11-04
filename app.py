@@ -177,8 +177,9 @@ if role is None:
                         st.rerun()
                     else:
                         st.error("座號或密碼錯誤。")
-                except Exception:
-                    st.error("登入驗證暫時無法使用，請稍後再試。")
+                except Exception as e:
+                    st.error("登入驗證發生系統錯誤。請將下方錯誤內容回報給畢冊製作組協助排查。")
+                    st.code(f"{type(e).__name__}: {e}")
     with admin_tab:
         st.subheader("畢冊製作組管理專區")
         username = st.text_input("管理帳號", key="admin_user")
