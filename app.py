@@ -22,12 +22,14 @@ BUCKET = "photos"
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
 @st.cache_resource
-def get_clients():
-    public_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    admin_client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
+def get_clients(project_url: str, publishable_key: str, secret_key: str):
+    # Include configuration in the cache key so Streamlit cannot reuse a
+    # client constructed earlier with a stale or malformed REST endpoint.
+    public_client = create_client(project_url, publishable_key)
+    admin_client = create_client(project_url, secret_key)
     return public_client, admin_client
 
-supabase, admin = get_clients()
+supabase, admin = get_clients(SUPABASE_URL, SUPABASE_KEY, SUPABASE_SECRET_KEY)
 
 st.markdown("""
 <style>
