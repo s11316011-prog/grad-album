@@ -270,7 +270,7 @@ if role is None:
         st.subheader("教師查詢專區")
         teacher_username = st.text_input("教師帳號", key="teacher_user")
         teacher_password = st.text_input("教師密碼", type="password", key="teacher_pwd")
-        if st.button("登入", type="primary", use_container_width=True):
+        if st.button("登入", type="primary", use_container_width=True, key="teacher_login_button"):
             try:
                 matched = verify_staff_account(teacher_username, teacher_password, "teacher")
                 if matched:
