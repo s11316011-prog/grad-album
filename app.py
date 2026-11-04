@@ -29,6 +29,8 @@ for admin_no in range(1, 6):
         password = st.secrets.get(password_key, "")
     if username and password:
         ADMIN_ACCOUNTS.append({"username": str(username), "password": str(password)})
+TEACHER_USERNAME = str(st.secrets.get("TEACHER_USERNAME", "")).strip()
+TEACHER_PASSWORD = str(st.secrets.get("TEACHER_PASSWORD", ""))
 BUCKET = "photos"
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
@@ -171,7 +173,7 @@ def show_group(group):
 role = current_role()
 
 if role is None:
-    student_tab, admin_tab = st.tabs(["學生登入", "畢冊製作組登入"])
+    student_tab, teacher_tab, admin_tab = st.tabs(["學生登入", "教師查詢登入", "畢冊製作組登入"])
     with student_tab:
         st.subheader("學生個人專區")
         seat = st.text_input("帳號（請輸入座號）", key="student_seat")
@@ -208,6 +210,18 @@ if role is None:
                         f"supabase package = {version('supabase')}\\n"
                         f"postgrest package = {version('postgrest')}"
                     )
+    with teacher_tab:
+        st.subheader("教師查詢專區")
+        teacher_username = st.text_input("教師帳號", key="teacher_user")
+        teacher_password = st.text_input("教師密碼", type="password", key="teacher_pwd")
+        if st.button("登入教師查詢", type="primary", use_container_width=True):
+            if (TEACHER_USERNAME and TEACHER_PASSWORD
+                    and hmac.compare_digest(teacher_username, TEACHER_USERNAME)
+                    and hmac.compare_digest(teacher_password, TEACHER_PASSWORD)):
+                set_session("teacher", {"username": TEACHER_USERNAME})
+                st.rerun()
+            else:
+                st.error("教師帳號或密碼錯誤，或尚未設定教師登入資料。")
     with admin_tab:
         st.subheader("畢冊製作組管理專區")
         username = st.text_input("管理帳號", key="admin_user")
@@ -230,7 +244,9 @@ identity = st.session_state.get("identity") or {}
 st.caption("登入有效時間：30 分鐘")
 if role == "student":
     st.success(f"學生登入成功：{identity['seat_no']} 號｜{identity['name']}")
-else:
+elif role == "teacher":
+    st.success("教師登入成功｜僅可查詢全班照片及小組分組名單")
+elif role == "admin":
     st.success("畢冊製作組管理員登入成功")
 if st.button("登出"):
     logout()
@@ -342,6 +358,70 @@ if role == "student":
         )
         st.info("七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。")
         st.caption("如有任何問題，請直接提出，或私下向相關負責人反映。")
+
+elif role == "teacher":
+    photo_tab, roster_tab = st.tabs(["🖼️ 全班照片查詢", "👥 小組分組名單"])
+    with photo_tab:
+        st.subheader("全班學生照片")
+        st.caption("教師僅能查看照片，沒有下載、刪除或修改權限。")
+        try:
+            student_paths = [
+                path for path in list_all_photos()
+                if not path.startswith("shoot_groups/")
+            ]
+            if not student_paths:
+                st.info("目前尚無學生上傳的照片。")
+            else:
+                st.write(f"目前共有 {len(student_paths)} 張學生照片")
+                for path in student_paths:
+                    seat_label = path.split("/", 1)[0] if "/" in path else path.split("_", 1)[0]
+                    with st.container(border=True):
+                        st.caption(f"座號：{seat_label}")
+                        try:
+                            st.image(make_url(path), use_container_width=True)
+                        except Exception:
+                            st.warning("這張照片目前無法預覽。")
+        except Exception:
+            st.error("照片查詢失敗，請稍後再試。")
+    with roster_tab:
+        st.subheader("小組分組名單")
+        st.caption("此頁僅供查詢，教師無法調整學生組別或修改拍攝資訊。")
+        try:
+            signups = (
+                admin.table("group_signups")
+                .select("id, seat_no, student_name, assigned_group")
+                .order("id")
+                .execute().data
+            )
+            if not signups:
+                st.info("目前尚無學生完成小組登記。")
+            else:
+                assigned = {}
+                unassigned = []
+                for row in signups:
+                    group_no = row.get("assigned_group")
+                    if group_no:
+                        assigned.setdefault(group_no, []).append(row)
+                    else:
+                        unassigned.append(row)
+                for group_no in sorted(assigned):
+                    st.markdown(f"### 第 {group_no} 組")
+                    for row in assigned[group_no]:
+                        st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
+                if unassigned:
+                    st.markdown("### 尚未分組")
+                    for row in unassigned:
+                        st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
+            st.divider()
+            st.subheader("小組拍攝資訊")
+            groups = get_groups()
+            if not groups:
+                st.info("目前尚未公布小組拍攝資訊。")
+            for group in groups:
+                with st.container(border=True):
+                    show_group(group)
+        except Exception:
+            st.error("小組名單讀取失敗，請稍後再試。")
 
 elif role == "admin":
     signup_tab, group_tab, photo_tab = st.tabs(["🧾 小組登記與分組", "📍 拍攝小組管理", "🗂️ 全班照片管理"])
