@@ -7,10 +7,12 @@ create table if not exists public.shooting_groups (
     members text,
     notes text,
     photo_path text,
+    group_number integer,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
 alter table public.shooting_groups enable row level security;
+create unique index if not exists shooting_groups_group_number_unique on public.shooting_groups (group_number) where group_number is not null;
 
 -- 刻意不建立 anon/authenticated policies。
 -- Streamlit 伺服器端以 SUPABASE_SECRET_KEY 存取此表。
