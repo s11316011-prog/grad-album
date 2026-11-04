@@ -16,8 +16,19 @@ st.set_page_config(
 SUPABASE_URL = st.secrets["SUPABASE_URL"].strip().rstrip("/")
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 SUPABASE_SECRET_KEY = st.secrets["SUPABASE_SECRET_KEY"]
-ADMIN_USERNAME = st.secrets["ADMIN_USERNAME"]
-ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
+# 管理員 1 沿用既有 Secrets；管理員 2～5 使用各自獨立的 Secrets。
+ADMIN_ACCOUNTS = []
+for admin_no in range(1, 6):
+    username_key = f"ADMIN_USERNAME_{admin_no}"
+    password_key = f"ADMIN_PASSWORD_{admin_no}"
+    if admin_no == 1:
+        username = st.secrets.get(username_key, st.secrets.get("ADMIN_USERNAME", ""))
+        password = st.secrets.get(password_key, st.secrets.get("ADMIN_PASSWORD", ""))
+    else:
+        username = st.secrets.get(username_key, "")
+        password = st.secrets.get(password_key, "")
+    if username and password:
+        ADMIN_ACCOUNTS.append({"username": str(username), "password": str(password)})
 BUCKET = "photos"
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
@@ -202,8 +213,14 @@ if role is None:
         username = st.text_input("管理帳號", key="admin_user")
         password = st.text_input("管理密碼", type="password", key="admin_pwd")
         if st.button("登入管理專區", type="primary", use_container_width=True):
-            if hmac.compare_digest(username, ADMIN_USERNAME) and hmac.compare_digest(password, ADMIN_PASSWORD):
-                set_session("admin", {"username": ADMIN_USERNAME})
+            matched = next(
+                (account for account in ADMIN_ACCOUNTS
+                 if hmac.compare_digest(username, account["username"])
+                 and hmac.compare_digest(password, account["password"])),
+                None,
+            )
+            if matched:
+                set_session("admin", {"username": matched["username"]})
                 st.rerun()
             else:
                 st.error("管理帳號或密碼錯誤。")
@@ -288,7 +305,31 @@ if role == "student":
                     show_group(group)
         except Exception:
             st.error("拍攝資訊讀取失敗，請聯絡畢冊製作組。")
-        st.info("完成分組後，請向指定負責人登記；登記負責人資訊待公布。")
+        st.divider()
+        st.subheader("小組登記")
+        st.write(f"座號：**{identity['seat_no']}**　姓名：**{identity['name']}**")
+        try:
+            signup_rows = (
+                admin.table("group_signups")
+                .select("id, assigned_group, created_at")
+                .eq("student_id", identity["id"])
+                .limit(1).execute().data
+            )
+            if signup_rows:
+                signup = signup_rows[0]
+                group_label = f"第 {signup['assigned_group']} 組" if signup.get("assigned_group") else "尚未分組"
+                st.success(f"已完成登記！你的登記編號為 {signup['id']:03d}，目前：{group_label}")
+            else:
+                if st.button("我要登記小組", type="primary", key="student_group_signup"):
+                    admin.table("group_signups").insert({
+                        "student_id": identity["id"],
+                        "seat_no": str(identity["seat_no"]),
+                        "student_name": identity["name"],
+                    }).execute()
+                    st.success("登記成功！系統已依登記順序產生編號，請留意後續分組公告。")
+                    st.rerun()
+        except Exception:
+            st.error("小組登記功能尚未啟用，請畢冊製作組確認已執行 group_signups.sql。")
     with personal_tab:
         st.subheader("個人生活照繳交規範")
         st.warning("每位同學都必須繳交，截止日期為 11 月 13 日。")
@@ -303,7 +344,39 @@ if role == "student":
         st.caption("如有任何問題，請直接提出，或私下向相關負責人反映。")
 
 elif role == "admin":
-    group_tab, photo_tab = st.tabs(["📍 拍攝小組管理", "🗂️ 全班照片管理"])
+    signup_tab, group_tab, photo_tab = st.tabs(["🧾 小組登記與分組", "📍 拍攝小組管理", "🗂️ 全班照片管理"])
+    with signup_tab:
+        st.subheader("學生小組登記名單")
+        st.caption("依系統登記先後排序；管理員可依實際分組狀況調整，不限制每組人數。")
+        try:
+            signups = admin.table("group_signups").select("*").order("id").execute().data
+            if not signups:
+                st.info("目前尚無學生登記。")
+            else:
+                st.write(f"目前共 {len(signups)} 位學生完成登記")
+                for signup in signups:
+                    sid = signup["id"]
+                    current_group = signup.get("assigned_group") or 0
+                    label = f"#{sid:03d}｜{signup.get('seat_no')} 號｜{signup.get('student_name')}"
+                    with st.container(border=True):
+                        left, right = st.columns([3, 2])
+                        left.write(label)
+                        options = [0] + list(range(1, 21))
+                        selected = right.selectbox(
+                            "分配組別（0 代表尚未分組）",
+                            options,
+                            index=options.index(current_group) if current_group in options else 0,
+                            format_func=lambda x: "尚未分組" if x == 0 else f"第 {x} 組",
+                            key=f"assign_group_{sid}",
+                        )
+                        if right.button("儲存組別", key=f"save_group_{sid}"):
+                            admin.table("group_signups").update({
+                                "assigned_group": selected if selected else None
+                            }).eq("id", sid).execute()
+                            st.success(f"{signup.get('seat_no')} 號已更新分組。")
+                            st.rerun()
+        except Exception:
+            st.error("無法讀取登記名單，請確認已執行 group_signups.sql。")
     with group_tab:
         st.subheader("新增拍攝小組")
         with st.form("new_group_form", clear_on_submit=True):
