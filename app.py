@@ -165,7 +165,7 @@ if role is None:
         st.subheader("學生個人專區")
         seat = st.text_input("帳號（請輸入座號）", key="student_seat")
         password = st.text_input("個人專屬密碼", type="password", key="student_pwd")
-        if st.button("登入學生專區", type="primary", use_container_width=True):
+        if st.button("登入", type="primary", use_container_width=True):
             if not seat.strip() or not password:
                 st.warning("請輸入座號及個人密碼。")
             else:
