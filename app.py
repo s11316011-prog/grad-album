@@ -378,30 +378,71 @@ if role == "student":
         except Exception:
             st.error("拍攝資訊讀取失敗，請聯絡畢冊製作組。")
         st.divider()
-        st.subheader("小組登記")
-        st.write(f"座號：**{identity['seat_no']}**　姓名：**{identity['name']}**")
+        st.subheader("學生自行組隊")
+        st.write(f"組長：**{identity['seat_no']} 號｜{identity['name']}**")
+        st.caption("由組長建立小組，輸入其他組員的座號即可。系統會自動帶入正確姓名，並將整組名單一次送出。")
         try:
-            signup_rows = (
+            my_group_rows = (
                 admin.table("group_signups")
-                .select("id, assigned_group, created_at")
+                .select("assigned_group")
                 .eq("student_id", identity["id"])
                 .limit(1).execute().data
             )
-            if signup_rows:
-                signup = signup_rows[0]
-                group_label = f"第 {signup['assigned_group']} 組" if signup.get("assigned_group") else "尚未分組"
-                st.success(f"已完成登記！你的登記編號為 {signup['id']:03d}，目前：{group_label}")
+            if my_group_rows and my_group_rows[0].get("assigned_group"):
+                my_group_no = my_group_rows[0]["assigned_group"]
+                st.success(f"你已加入第 {my_group_no} 組，不能再加入其他組別。")
+                member_rows = (
+                    admin.table("group_signups")
+                    .select("seat_no, student_name")
+                    .eq("assigned_group", my_group_no)
+                    .order("seat_no").execute().data
+                )
+                st.markdown(f"**第 {my_group_no} 組組員名單**")
+                for member in member_rows:
+                    st.write(f"{member['seat_no']} 號｜{member['student_name']}")
             else:
-                if st.button("我要登記小組", type="primary", key="student_group_signup"):
-                    admin.table("group_signups").insert({
-                        "student_id": identity["id"],
-                        "seat_no": str(identity["seat_no"]),
-                        "student_name": identity["name"],
-                    }).execute()
-                    st.success("登記成功！系統已依登記順序產生編號，請留意後續分組公告。")
-                    st.rerun()
+                with st.form("student_create_group_form"):
+                    member_seats_text = st.text_area(
+                        "其他組員座號",
+                        placeholder="例如：2、5、8\n也可以每行輸入一個座號",
+                        help="不用輸入自己的座號，系統會自動把你列為組長。可用逗號、頓號或換行分隔。",
+                    )
+                    confirm_group = st.form_submit_button("確認組隊並送出", type="primary")
+                if confirm_group:
+                    import re
+                    member_seats = [
+                        value for value in re.split(r"[,，、\s]+", member_seats_text.strip())
+                        if value
+                    ]
+                    if not member_seats:
+                        st.warning("請至少輸入一位其他組員的座號。")
+                    elif str(identity["seat_no"]).strip() in member_seats:
+                        st.error("不用輸入自己的座號，系統會自動加入組長。")
+                    else:
+                        try:
+                            result = admin.rpc(
+                                "submit_student_group",
+                                {
+                                    "input_leader_student_id": identity["id"],
+                                    "input_member_seat_numbers": member_seats,
+                                },
+                            ).execute()
+                            submitted_group = result.data[0]
+                            st.success(
+                                f"組隊成功！第 {submitted_group['group_number']} 組，"
+                                f"共 {submitted_group['member_count']} 位組員。"
+                            )
+                            st.rerun()
+                        except Exception as submit_error:
+                            error_text = str(submit_error)
+                            if "已經加入其他小組" in error_text or "重複" in error_text:
+                                st.error("送出失敗：組員名單有重複，或有人已經加入其他小組。請重新確認座號。")
+                            elif "座號不存在" in error_text:
+                                st.error("送出失敗：有座號查不到，請確認座號是否正確。")
+                            else:
+                                st.error("小組送出失敗，請稍後重試；若持續發生，請聯絡畢冊製作組。")
         except Exception:
-            st.error("小組登記功能尚未啟用，請畢冊製作組確認已執行 group_signups.sql。")
+            st.error("小組組隊功能目前無法讀取資料，請稍後再試或聯絡畢冊製作組。")
     with personal_tab:
         st.subheader("個人生活照繳交規範")
         st.warning("每位同學都必須繳交，截止日期為 11 月 13 日。")
@@ -482,37 +523,38 @@ elif role == "teacher":
 elif role == "admin":
     signup_tab, group_tab, photo_tab, staff_tab = st.tabs(["🧾 小組登記與分組", "📍 拍攝小組管理", "🗂️ 全班照片管理", "🔐 帳號管理"])
     with signup_tab:
-        st.subheader("學生小組登記名單")
-        st.caption("依系統登記先後排序；管理員可依實際分組狀況調整，不限制每組人數。")
+        st.subheader("學生自行組隊結果")
+        st.caption("學生由組長建立小組並一次送出；每位學生只能屬於一組。管理員可查看各組名單及尚未組隊的學生。")
         try:
-            signups = admin.table("group_signups").select("*").order("id").execute().data
+            signups = (
+                admin.table("group_signups")
+                .select("id, seat_no, student_name, assigned_group")
+                .order("id").execute().data
+            )
+            grouped = {}
+            ungrouped = []
+            for row in signups:
+                group_no = row.get("assigned_group")
+                if group_no is None:
+                    ungrouped.append(row)
+                else:
+                    grouped.setdefault(group_no, []).append(row)
+
             if not signups:
-                st.info("目前尚無學生登記。")
+                st.info("目前尚無學生送出小組名單。")
             else:
-                st.write(f"目前共 {len(signups)} 位學生完成登記")
-                for signup in signups:
-                    sid = signup["id"]
-                    current_group = signup.get("assigned_group") or 0
-                    label = f"#{sid:03d}｜{signup.get('seat_no')} 號｜{signup.get('student_name')}"
+                st.write(f"已登記 {len(signups)} 位學生｜已組隊 {len(signups) - len(ungrouped)} 位｜尚未組隊 {len(ungrouped)} 位")
+                for group_no in sorted(grouped):
                     with st.container(border=True):
-                        left, right = st.columns([3, 2])
-                        left.write(label)
-                        options = [0] + list(range(1, len(signups) + 2))
-                        selected = right.selectbox(
-                            "分配組別（0 代表尚未分組）",
-                            options,
-                            index=options.index(current_group) if current_group in options else 0,
-                            format_func=lambda x: "尚未分組" if x == 0 else f"第 {x} 組",
-                            key=f"assign_group_{sid}",
-                        )
-                        if right.button("儲存組別", key=f"save_group_{sid}"):
-                            admin.table("group_signups").update({
-                                "assigned_group": selected if selected else None
-                            }).eq("id", sid).execute()
-                            st.success(f"{signup.get('seat_no')} 號已更新分組。")
-                            st.rerun()
+                        st.markdown(f"### 第 {group_no} 組")
+                        for row in grouped[group_no]:
+                            st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
+                if ungrouped:
+                    st.markdown("### 尚未組隊")
+                    for row in ungrouped:
+                        st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
         except Exception:
-            st.error("無法讀取登記名單，請確認已執行 group_signups.sql。")
+            st.error("無法讀取小組名單，請確認 group_signups 資料表設定。")
     with group_tab:
         st.subheader("新增拍攝小組")
         with st.form("new_group_form", clear_on_submit=True):
