@@ -317,12 +317,12 @@ if st.button("登出"):
     logout()
 
 if role == "student":
-    upload_tab, mine_tab, class_tab, announcement_tab, group_tab, personal_tab = st.tabs([
+    announcement_tab, upload_tab, mine_tab, group_tab, class_tab, personal_tab = st.tabs([
+        "📢 最新公告",
         "📤 個人生活照繳交",
         "🖼️ 我的照片",
-        "📸 班級團體照",
-        "📢 最新公告",
         "👥 分組登記&名單",
+        "📸 班級團體照",
         "📝 個人生活照須知",
     ])
     with upload_tab:
@@ -490,7 +490,7 @@ if role == "student":
         st.caption("如有任何問題，請直接提出，或私下向相關負責人反映。")
 
 elif role == "teacher":
-    photo_tab, roster_tab = st.tabs(["🖼️ 全班照片查詢", "👥 小組分組名單"])
+    roster_tab, photo_tab = st.tabs(["👥 小組分組名單", "🖼️ 全班照片查詢"])
     with photo_tab:
         st.subheader("全班學生照片")
         st.caption("管理員僅能查看照片，沒有下載、刪除或修改權限。")
@@ -563,11 +563,11 @@ elif role == "teacher":
 
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    tab_labels = ["🧾 小組登記與分組", "📢 公告管理中心", "🗂️ 全班照片管理"]
+    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
-    signup_tab, group_tab, photo_tab = created_tabs[:3]
+    group_tab, signup_tab, photo_tab = created_tabs[:3]
     staff_tab = created_tabs[3] if is_full_admin else None
     with signup_tab:
         st.subheader("學生自行組隊結果")
