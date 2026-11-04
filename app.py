@@ -770,10 +770,20 @@ elif role == "admin":
         taipei_tz = timezone(timedelta(hours=8))
         now_taipei = datetime.now(taipei_tz)
         with st.expander("➕ 新增公告", expanded=True):
+            announcement_templates = {
+                "自訂公告": {"category": "一般通知", "title": "", "content": ""},
+                "📣 一般通知": {"category": "一般通知", "title": "【班級通知】", "content": "通知事項：\n\n相關日期／時間：\n\n請同學留意，謝謝。"},
+                "⚠️ 緊急通知": {"category": "緊急通知", "title": "【重要／緊急通知】", "content": "通知原因：\n\n需要同學配合的事項：\n\n請同學務必留意。"},
+                "📸 拍攝時間或地點異動": {"category": "拍攝異動", "title": "【拍攝資訊異動】", "content": "原訂拍攝時間／地點：\n\n調整後時間／地點：\n\n其他注意事項："},
+                "📤 照片繳交提醒": {"category": "照片繳交", "title": "【照片繳交提醒】", "content": "繳交項目：\n\n繳交期限：\n\n繳交方式：\n\n注意事項："},
+                "👥 分組集合通知": {"category": "分組通知", "title": "【分組集合通知】", "content": "組別：\n\n集合日期：\n\n集合時間：\n\n集合地點：\n\n攜帶物品／注意事項："},
+            }
+            selected_template = st.selectbox("公告範本（可再自行修改）", list(announcement_templates.keys()))
+            template_data = announcement_templates[selected_template]
             with st.form("create_announcement_form", clear_on_submit=True):
-                new_notice_title = st.text_input("公告標題", placeholder="例如：明日拍攝時間調整")
-                new_notice_category = st.selectbox("公告類型", announcement_categories)
-                new_notice_content = st.text_area("公告內容", height=150, placeholder="請輸入公告內容，可寫集合時間、地點、注意事項等。")
+                new_notice_title = st.text_input("公告標題", value=template_data["title"], placeholder="例如：明日拍攝時間調整")
+                new_notice_category = st.selectbox("公告類型", announcement_categories, index=announcement_categories.index(template_data["category"]))
+                new_notice_content = st.text_area("公告內容", value=template_data["content"], height=150, placeholder="請輸入公告內容，可寫集合時間、地點、注意事項等。")
                 new_notice_status = st.selectbox("發布狀態", ["draft", "published"], format_func=lambda x: "立即發布／依指定時間發布" if x == "published" else "儲存草稿")
                 new_notice_date = st.date_input("發布日期", value=now_taipei.date())
                 new_notice_time = st.time_input("發布時間", value=now_taipei.time().replace(second=0, microsecond=0))
