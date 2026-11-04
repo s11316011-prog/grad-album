@@ -577,8 +577,8 @@ elif role == "admin":
                 f"尚未組隊 {len(ungrouped)} 位"
             )
             st.divider()
-            st.subheader("全班卡片式分組整理")
-            st.caption("每組是一張獨立卡片，組別名稱在上方、學生座號與姓名列在下方。可直接拖曳學生到任何組別，也可拖到「尚未組隊」。")
+            st.subheader("分組管理看板")
+            st.caption("Notion 看板模式：每個組別是一個直向欄位，學生是一張張卡片。可橫向查看所有組別，並把學生拖曳到任何組別或「尚未組隊」。")
             group_choices = sorted(grouped.keys())
             from streamlit_sortables import sort_items
             student_lookup = {
@@ -587,7 +587,7 @@ elif role == "admin":
             }
             group_boards = [
                 {
-                    "header": f"第 {group_no} 組（{len(grouped[group_no])} 人）",
+                    "header": f"第 {group_no} 組",
                     "items": [
                         f"{row.get('seat_no')} 號｜{row.get('student_name')}"
                         for row in sorted(
@@ -599,28 +599,31 @@ elif role == "admin":
                 for group_no in group_choices
             ]
             group_boards.append({
-                "header": f"尚未組隊（{len(ungrouped)} 人）",
+                "header": "尚未組隊",
                 "items": [
                     f"{student.get('seat_no')} 號｜{student.get('name')}"
                     for student in ungrouped
                 ],
             })
+            st.caption(
+                f"目前 {len(group_choices)} 個組別｜全班 {len(students)} 位學生｜"
+                f"已分組 {assigned_count} 位｜尚未組隊 {len(ungrouped)} 位"
+            )
             sorted_boards = sort_items(
                 group_boards,
                 multi_containers=True,
-                key="admin_drag_all_group_cards",
+                key="admin_notion_group_board",
             )
-            if st.button("儲存全班分組調整", type="primary", key="admin_save_all_group_cards"):
+            if st.button("儲存看板上的全班調整", type="primary", key="admin_save_all_group_cards"):
                 try:
                     group_by_header = {
-                        f"第 {group_no} 組（{len(grouped[group_no])} 人）": group_no
+                        f"第 {group_no} 組": group_no
                         for group_no in group_choices
                     }
-                    ungrouped_header = f"尚未組隊（{len(ungrouped)} 人）"
                     target_groups = {}
                     for board in sorted_boards:
                         header = board.get("header")
-                        if header == ungrouped_header:
+                        if header == "尚未組隊":
                             target_group = None
                         elif header in group_by_header:
                             target_group = group_by_header[header]
@@ -645,9 +648,10 @@ elif role == "admin":
                         if current_group == target_group:
                             continue
                         if target_group is None:
-                            admin.table("group_signups").update(
-                                {"assigned_group": None}
-                            ).eq("student_id", student_id).execute()
+                            if student_id in current_groups:
+                                admin.table("group_signups").update(
+                                    {"assigned_group": None}
+                                ).eq("student_id", student_id).execute()
                         else:
                             admin.rpc(
                                 "admin_set_student_group",
@@ -656,7 +660,7 @@ elif role == "admin":
                                     "input_group_number": target_group,
                                 },
                             ).execute()
-                    st.success("全班分組調整已儲存。")
+                    st.success("看板上的全班分組調整已儲存。")
                     st.rerun()
                 except Exception:
                     st.error("全班分組儲存失敗，請重新整理後再試。")
