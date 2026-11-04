@@ -563,7 +563,7 @@ elif role == "teacher":
 
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    tab_labels = ["🧾 小組登記與分組", "📢 公告設定", "🗂️ 全班照片管理"]
+    tab_labels = ["🧾 小組登記與分組", "📢 公告管理中心", "🗂️ 全班照片管理"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
