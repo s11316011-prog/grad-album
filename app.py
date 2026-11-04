@@ -178,8 +178,15 @@ if role is None:
                     else:
                         st.error("座號或密碼錯誤。")
                 except Exception as e:
-                    st.error("登入驗證發生系統錯誤。請將下方錯誤內容回報給畢冊製作組協助排查。")
-                    st.code(f"{type(e).__name__}: {e}")
+                    st.error("登入驗證發生系統錯誤，正在區分資料庫 API 與登入 RPC 問題。")
+                    st.code(f"登入 RPC：{type(e).__name__}: {e}")
+                    try:
+                        admin.table("grad_album").select("id").limit(1).execute()
+                        st.success("診斷結果：一般資料表 API 可正常連線；問題集中在登入 RPC 請求。")
+                    except Exception as api_error:
+                        st.error("診斷結果：一般資料表 API 也無法連線。")
+                        st.code(f"資料表 API：{type(api_error).__name__}: {api_error}")
+                    st.caption("此診斷只讀取一筆資料的 id，不會顯示或修改學生個資、密碼或照片。")
     with admin_tab:
         st.subheader("畢冊製作組管理專區")
         username = st.text_input("管理帳號", key="admin_user")
