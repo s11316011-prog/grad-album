@@ -210,6 +210,38 @@ def list_all_photos():
                 continue
     return sorted(set(paths))
 
+def get_groups():
+    return admin.table("shooting_groups").select("*").order("created_at").execute().data
+
+def show_group(group):
+    st.markdown(f"### {group.get('group_name') or '未命名小組'}")
+    c1, c2 = st.columns(2)
+    c1.write(f"**拍攝地點：** {group.get('location') or '未設定'}")
+    c2.write(f"**集合時間：** {group.get('meeting_time') or '未設定'}")
+    linked_group = group.get("group_number")
+    if linked_group is not None:
+        member_rows = (
+            admin.table("group_signups")
+            .select("seat_no, student_name")
+            .eq("assigned_group", linked_group)
+            .order("seat_no").execute().data
+        )
+        if member_rows:
+            member_text = "、".join(
+                f"{row.get('seat_no')} 號｜{row.get('student_name')}"
+                for row in member_rows
+            )
+        else:
+            member_text = "目前尚無組員"
+        st.write(f"**實際組員名單（第 {linked_group} 組）：** {member_text}")
+    else:
+        st.write(f"**組員名單：** {group.get('members') or '尚未連結學生分組'}")
+    st.write(f"**注意事項：** {group.get('notes') or '無'}")
+    if group.get("photo_path"):
+        try:
+            st.image(make_url(group["photo_path"]), width=420)
+        except Exception:
+            st.caption("地點照片目前無法讀取")
 
 role = current_role()
 
@@ -285,9 +317,10 @@ if st.button("登出"):
     logout()
 
 if role == "student":
-    upload_tab, mine_tab, group_tab, personal_tab = st.tabs([
+    upload_tab, mine_tab, class_tab, group_tab, personal_tab = st.tabs([
         "📤 個人生活照繳交",
         "🖼️ 我的照片",
+        "📸 班級團體照",
         "👥 分組登記&名單",
         "📝 個人生活照須知",
     ])
@@ -331,6 +364,109 @@ if role == "student":
                         st.image(make_url(path), use_container_width=True)
         except Exception:
             st.error("照片讀取失敗，請稍後再試。")
+    with class_tab:
+        st.subheader("班級團體照拍攝公告")
+        st.markdown("**拍攝日期：** 11 月 6 日（星期五）")
+        st.markdown("**集合時間：** 上午 08:20")
+        st.markdown("**集合地點：** 健康中心旁的小石桌")
+        st.markdown("**服裝要求：** 請穿著制服")
+        st.markdown("**預計拍攝：** 3 張")
+        st.markdown("**指定動作：**")
+        st.markdown("1. YA 手勢\n2. 小愛心\n3. 戳臉")
+        st.warning("請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。")
+    with group_tab:
+        st.subheader("📢 分組公告")
+        st.caption("各組拍攝地點、集合時間、注意事項及組員名單會直接顯示在這裡，不需要另外開啟公告頁面。")
+        try:
+            groups = get_groups()
+            if not groups:
+                st.info("目前尚未公布小組拍攝資訊。")
+            for group in groups:
+                with st.container(border=True):
+                    show_group(group)
+        except Exception:
+            st.error("拍攝資訊讀取失敗，請聯絡畢冊製作組。")
+        st.divider()
+        st.subheader("學生自行組隊")
+        st.write(f"組長：**{identity['seat_no']} 號｜{identity['name']}**")
+        st.caption("由組長建立小組，輸入其他組員的座號即可。系統會自動帶入正確姓名，並將整組名單一次送出。")
+        try:
+            my_group_rows = (
+                admin.table("group_signups")
+                .select("assigned_group")
+                .eq("student_id", identity["id"])
+                .limit(1).execute().data
+            )
+            if my_group_rows and my_group_rows[0].get("assigned_group"):
+                my_group_no = my_group_rows[0]["assigned_group"]
+                st.success(f"你已加入第 {my_group_no} 組，不能再加入其他組別。")
+                member_rows = (
+                    admin.table("group_signups")
+                    .select("seat_no, student_name")
+                    .eq("assigned_group", my_group_no)
+                    .order("seat_no").execute().data
+                )
+                st.markdown(f"**第 {my_group_no} 組組員名單**")
+                for member in member_rows:
+                    st.write(f"{member['seat_no']} 號｜{member['student_name']}")
+            else:
+                with st.form("student_create_group_form"):
+                    member_seats_text = st.text_area(
+                        "其他組員座號",
+                        placeholder="例如：2、5、8\n也可以每行輸入一個座號",
+                        help="不用輸入自己的座號，系統會自動把你列為組長。可用逗號、頓號或換行分隔。",
+                    )
+                    confirm_group = st.form_submit_button("確認組隊並送出", type="primary")
+                if confirm_group:
+                    import re
+                    member_seats = [
+                        value for value in re.split(r"[,，、\s]+", member_seats_text.strip())
+                        if value
+                    ]
+                    if not member_seats:
+                        st.warning("請至少輸入一位其他組員的座號。")
+                    elif str(identity["seat_no"]).strip() in member_seats:
+                        st.error("不用輸入自己的座號，系統會自動加入組長。")
+                    else:
+                        try:
+                            result = admin.rpc(
+                                "submit_student_group",
+                                {
+                                    "input_leader_student_id": identity["id"],
+                                    "input_member_seat_numbers": member_seats,
+                                },
+                            ).execute()
+                            submitted_group = result.data[0]
+                            st.success(
+                                f"組隊成功！第 {submitted_group['group_number']} 組，"
+                                f"共 {submitted_group['member_count']} 位組員。"
+                            )
+                            st.rerun()
+                        except Exception as submit_error:
+                            error_text = str(submit_error)
+                            if "已經加入其他小組" in error_text or "重複" in error_text:
+                                st.error("送出失敗：組員名單有重複，或有人已經加入其他小組。請重新確認座號。")
+                            elif "座號不存在" in error_text:
+                                st.error("送出失敗：有座號查不到，請確認座號是否正確。")
+                            else:
+                                st.error("小組送出失敗，請稍後重試；若持續發生，請聯絡畢冊製作組。")
+        except Exception:
+            st.error("小組組隊功能目前無法讀取資料，請稍後再試或聯絡畢冊製作組。")
+    with personal_tab:
+        st.subheader("個人生活照繳交規範")
+        st.warning("每位同學都必須繳交，截止日期為 11 月 13 日。")
+        st.markdown(
+            "1. 每位同學都必須繳交個人生活照。\n"
+            "2. 不可用任何方式遮蓋五官。\n"
+            "3. 請採用七分身拍攝方式。\n"
+            "4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\n"
+            "5. 請於 11 月 13 日前至指定網址繳交。"
+        )
+        st.info("七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。")
+        st.caption("如有任何問題，請直接提出，或私下向相關負責人反映。")
+
+elif role == "teacher":
+    photo_tab, roster_tab = st.tabs(["🖼️ 全班照片查詢", "👥 小組分組名單"])
     with photo_tab:
         st.subheader("全班學生照片")
         st.caption("管理員僅能查看照片，沒有下載、刪除或修改權限。")
@@ -403,12 +539,12 @@ if role == "student":
 
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    tab_labels = ["🧾 小組登記與分組", "🗂️ 全班照片管理"]
+    tab_labels = ["🧾 小組登記與分組", "📢 公告設定", "🗂️ 全班照片管理"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
-    signup_tab, photo_tab = created_tabs[:2]
-    staff_tab = created_tabs[2] if is_full_admin else None
+    signup_tab, group_tab, photo_tab = created_tabs[:3]
+    staff_tab = created_tabs[3] if is_full_admin else None
     with signup_tab:
         st.subheader("學生自行組隊結果")
         st.caption("學生由組長建立小組並一次送出；每位學生只能屬於一組。管理員可查看各組名單及尚未組隊的學生。")
