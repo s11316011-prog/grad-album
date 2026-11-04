@@ -577,8 +577,6 @@ elif role == "admin":
                 f"尚未組隊 {len(ungrouped)} 位"
             )
             st.divider()
-            st.subheader("分組管理看板")
-            st.caption("Notion 看板模式：每個組別是一個直向欄位，學生是一張張卡片。可橫向查看所有組別，並把學生拖曳到任何組別或「尚未組隊」。")
             # 同步既有分組到持久化欄位表，讓空組別重新整理後仍保留
             saved_columns = (
                 admin.table("student_group_columns")
@@ -596,6 +594,13 @@ elif role == "admin":
 
             group_choices = sorted(saved_group_numbers | set(grouped.keys()))
             st.subheader("分組管理看板")
+            if group_choices:
+                st.markdown("**目前組別：** " + "　｜　".join(
+                    f"第 {number} 組（{len(grouped.get(number, []))} 人）"
+                    for number in group_choices
+                ))
+            else:
+                st.info("目前還沒有組別，請按「＋ 新增組別」建立第一組。")
             st.caption("Notion 看板模式：每個組別是一個直向欄位，學生是一張張卡片。可橫向查看所有組別，並把學生拖曳到任何組別或「尚未組隊」。")
             if st.button("＋ 新增組別", type="secondary", key="admin_add_group_column"):
                 try:
@@ -701,7 +706,7 @@ elif role == "admin":
                 delete_group_no = st.selectbox(
                     "選擇要刪除的組別",
                     group_choices,
-                    format_func=lambda value: f"第 {value} 組（{len(grouped[value])} 人）",
+                    format_func=lambda value: f"第 {value} 組（{len(grouped.get(value, []))} 人）",
                     key="admin_delete_group_select",
                 )
                 confirm_delete_group = st.checkbox(
