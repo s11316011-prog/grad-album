@@ -229,7 +229,7 @@ def show_group(group):
 role = current_role()
 
 if role is None:
-    student_tab, teacher_tab, admin_tab = st.tabs(["學生登入", "教師查詢登入", "畢冊製作組登入"])
+    student_tab, teacher_tab, admin_tab = st.tabs(["學生登入", "教師查詢登入", "管理員登入"])
     with student_tab:
         st.subheader("學生個人專區")
         seat = st.text_input("帳號（請輸入座號）", key="student_seat")
