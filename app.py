@@ -219,9 +219,16 @@ if st.button("登出"):
     logout()
 
 if role == "student":
-    up_tab, mine_tab, info_tab = st.tabs(["📤 上傳照片", "🖼️ 我的照片", "📍 小組拍攝資訊"])
-    with up_tab:
-        st.subheader("上傳個人照片")
+    upload_tab, mine_tab, class_tab, group_tab, personal_tab = st.tabs([
+        "📤 個人生活照繳交",
+        "🖼️ 我的照片",
+        "📸 班級團體照",
+        "👥 小組拍攝資訊",
+        "📝 個人生活照須知",
+    ])
+    with upload_tab:
+        st.subheader("上傳個人生活照")
+        st.info("每位同學都必須繳交個人生活照，請先閱讀「個人生活照須知」再上傳。")
         files = st.file_uploader(
             "可多選 JPG、PNG、WEBP，每張上限 10 MB",
             type=["jpg", "jpeg", "png", "webp"],
@@ -259,8 +266,19 @@ if role == "student":
                         st.image(make_url(path), use_container_width=True)
         except Exception:
             st.error("照片讀取失敗，請稍後再試。")
-    with info_tab:
+    with class_tab:
+        st.subheader("班級團體照拍攝公告")
+        st.markdown("**拍攝日期：** 11 月 6 日（星期五）")
+        st.markdown("**集合時間：** 上午 08:20")
+        st.markdown("**集合地點：** 健康中心旁的小石桌")
+        st.markdown("**服裝要求：** 請穿著制服")
+        st.markdown("**預計拍攝：** 3 張")
+        st.markdown("**指定動作：**")
+        st.markdown("1. YA 手勢\n2. 小愛心\n3. 戳臉")
+        st.warning("請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。")
+    with group_tab:
         st.subheader("小組拍攝資訊")
+        st.caption("各組拍攝地點、集合時間、注意事項、地點照片及組員名單，以畢冊製作組公布的資料為準。")
         try:
             groups = get_groups()
             if not groups:
@@ -270,6 +288,19 @@ if role == "student":
                     show_group(group)
         except Exception:
             st.error("拍攝資訊讀取失敗，請聯絡畢冊製作組。")
+        st.info("完成分組後，請向指定負責人登記；登記負責人資訊待公布。")
+    with personal_tab:
+        st.subheader("個人生活照繳交規範")
+        st.warning("每位同學都必須繳交，截止日期為 11 月 13 日。")
+        st.markdown(
+            "1. 每位同學都必須繳交個人生活照。\n"
+            "2. 不可用任何方式遮蓋五官。\n"
+            "3. 請採用七分身拍攝方式。\n"
+            "4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\n"
+            "5. 請於 11 月 13 日前至指定網址繳交。"
+        )
+        st.info("七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。")
+        st.caption("如有任何問題，請直接提出，或私下向相關負責人反映。")
 
 elif role == "admin":
     group_tab, photo_tab = st.tabs(["📍 拍攝小組管理", "🗂️ 全班照片管理"])
