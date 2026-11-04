@@ -229,7 +229,7 @@ def show_group(group):
 role = current_role()
 
 if role is None:
-    student_tab, teacher_tab, admin_tab = st.tabs(["學生登入", "教師登入", "畢冊製作組登入"])
+    student_tab, teacher_tab, admin_tab = st.tabs(["學生登入", "教師查詢登入", "畢冊製作組登入"])
     with student_tab:
         st.subheader("學生個人專區")
         seat = st.text_input("帳號（請輸入座號）", key="student_seat")
@@ -267,10 +267,10 @@ if role is None:
                         f"postgrest package = {version('postgrest')}"
                     )
     with teacher_tab:
-        st.subheader("教師登入")
+        st.subheader("教師查詢專區")
         teacher_username = st.text_input("教師帳號", key="teacher_user")
         teacher_password = st.text_input("教師密碼", type="password", key="teacher_pwd")
-        if st.button("教師登入", type="primary", use_container_width=True):
+        if st.button("登入教師查詢", type="primary", use_container_width=True):
             try:
                 matched = verify_staff_account(teacher_username, teacher_password, "teacher")
                 if matched:
