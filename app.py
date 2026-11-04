@@ -486,29 +486,37 @@ elif role == "teacher":
         try:
             signups = (
                 admin.table("group_signups")
-                .select("id, seat_no, student_name, assigned_group")
+                .select("id, student_id, seat_no, student_name, assigned_group")
                 .order("id")
                 .execute().data
             )
-            if not signups:
-                st.info("目前尚無學生完成小組登記。")
-            else:
-                assigned = {}
-                unassigned = []
-                for row in signups:
-                    group_no = row.get("assigned_group")
-                    if group_no:
-                        assigned.setdefault(group_no, []).append(row)
-                    else:
-                        unassigned.append(row)
-                for group_no in sorted(assigned):
-                    st.markdown(f"### 第 {group_no} 組")
-                    for row in assigned[group_no]:
-                        st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
-                if unassigned:
-                    st.markdown("### 尚未分組")
-                    for row in unassigned:
-                        st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
+            students = (
+                admin.table("grad_album")
+                .select("id, seat_no, name")
+                .order("seat_no")
+                .execute().data
+            )
+            assigned = {}
+            assigned_student_ids = set()
+            for row in signups:
+                group_no = row.get("assigned_group")
+                if group_no is not None:
+                    assigned.setdefault(group_no, []).append(row)
+                    assigned_student_ids.add(row.get("student_id"))
+            for group_no in sorted(assigned):
+                st.markdown(f"### 第 {group_no} 組")
+                for row in assigned[group_no]:
+                    st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
+            unassigned_students = [
+                student for student in students
+                if student.get("id") not in assigned_student_ids
+            ]
+            if unassigned_students:
+                st.markdown("### 尚未組隊")
+                for student in unassigned_students:
+                    st.write(f"{student.get('seat_no')} 號｜{student.get('name')}")
+            if not assigned and not unassigned_students:
+                st.info("目前沒有可顯示的分組資料。")
             st.divider()
             st.subheader("小組拍攝資訊")
             groups = get_groups()
@@ -528,31 +536,40 @@ elif role == "admin":
         try:
             signups = (
                 admin.table("group_signups")
-                .select("id, seat_no, student_name, assigned_group")
+                .select("id, student_id, seat_no, student_name, assigned_group")
                 .order("id").execute().data
             )
+            students = (
+                admin.table("grad_album")
+                .select("id, seat_no, name")
+                .order("seat_no").execute().data
+            )
             grouped = {}
-            ungrouped = []
+            assigned_student_ids = set()
             for row in signups:
                 group_no = row.get("assigned_group")
-                if group_no is None:
-                    ungrouped.append(row)
-                else:
+                if group_no is not None:
                     grouped.setdefault(group_no, []).append(row)
+                    assigned_student_ids.add(row.get("student_id"))
 
-            if not signups:
-                st.info("目前尚無學生送出小組名單。")
-            else:
-                st.write(f"已登記 {len(signups)} 位學生｜已組隊 {len(signups) - len(ungrouped)} 位｜尚未組隊 {len(ungrouped)} 位")
-                for group_no in sorted(grouped):
-                    with st.container(border=True):
-                        st.markdown(f"### 第 {group_no} 組")
-                        for row in grouped[group_no]:
-                            st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
-                if ungrouped:
-                    st.markdown("### 尚未組隊")
-                    for row in ungrouped:
+            ungrouped = [
+                student for student in students
+                if student.get("id") not in assigned_student_ids
+            ]
+            assigned_count = len(assigned_student_ids)
+            st.write(
+                f"全班 {len(students)} 位學生｜已組隊 {assigned_count} 位｜"
+                f"尚未組隊 {len(ungrouped)} 位"
+            )
+            for group_no in sorted(grouped):
+                with st.container(border=True):
+                    st.markdown(f"### 第 {group_no} 組（{len(grouped[group_no])} 人）")
+                    for row in grouped[group_no]:
                         st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
+            if ungrouped:
+                st.markdown("### 尚未組隊")
+                for student in ungrouped:
+                    st.write(f"{student.get('seat_no')} 號｜{student.get('name')}")
         except Exception:
             st.error("無法讀取小組名單，請確認 group_signups 資料表設定。")
     with group_tab:
