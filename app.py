@@ -411,7 +411,8 @@ if role == "student":
         except Exception:
             st.error("公告讀取失敗，請稍後再試。")
     with group_tab:
-        st.subheader("學生自行組隊")
+        st.subheader("分組登記與小組合照繳交")
+        st.info("**小組拍攝注意事項**\n\n（1）需要 4 張\n\n（2）動作需自行決定")
         st.write(f"組長：**{identity['seat_no']} 號｜{identity['name']}**")
         st.caption("由組長建立小組，輸入其他組員的座號即可。系統會自動帶入正確姓名，並將整組名單一次送出。")
         try:
@@ -433,6 +434,77 @@ if role == "student":
                 st.markdown(f"**第 {my_group_no} 組組員名單**")
                 for member in member_rows:
                     st.write(f"{member['seat_no']} 號｜{member['student_name']}")
+
+                st.divider()
+                st.markdown("### 📷 本組小組合照（共 4 張）")
+                try:
+                    leader_rows = (
+                        admin.table("group_leaders")
+                        .select("leader_student_id")
+                        .eq("group_number", my_group_no)
+                        .limit(1).execute().data
+                    )
+                    photo_rows = (
+                        admin.table("group_photos")
+                        .select("photo_slot, storage_path")
+                        .eq("group_number", my_group_no)
+                        .order("photo_slot").execute().data
+                    )
+                    photo_by_slot = {row["photo_slot"]: row for row in photo_rows}
+                    is_group_leader = bool(
+                        leader_rows and leader_rows[0]["leader_student_id"] == identity["id"]
+                    )
+                    if not leader_rows:
+                        st.warning("本組組長尚未完成上傳權限登記，請聯絡管理員協助設定。")
+                    elif is_group_leader:
+                        st.caption("由組長統一上傳本組 4 張照片。每個欄位可重新上傳替換；每張上限 10 MB。")
+                    else:
+                        st.caption("本組照片由組長統一上傳，你可以查看目前繳交進度。")
+                    photo_cols = st.columns(4)
+                    for slot in range(1, 5):
+                        with photo_cols[slot - 1]:
+                            st.markdown(f"**第 {slot} 張**")
+                            existing_photo = photo_by_slot.get(slot)
+                            if existing_photo:
+                                st.image(make_url(existing_photo["storage_path"]), use_container_width=True)
+                                st.success("已繳交")
+                            else:
+                                st.info("尚未繳交")
+                            if is_group_leader:
+                                chosen_photo = st.file_uploader(
+                                    f"選擇第 {slot} 張",
+                                    type=["jpg", "jpeg", "png", "webp"],
+                                    key=f"group_photo_file_{my_group_no}_{slot}",
+                                )
+                                if st.button(
+                                    f"上傳／替換第 {slot} 張",
+                                    key=f"group_photo_upload_{my_group_no}_{slot}",
+                                    disabled=chosen_photo is None,
+                                ):
+                                    photo_data, photo_mime, photo_error = image_info(chosen_photo)
+                                    if photo_error:
+                                        st.error(photo_error)
+                                    else:
+                                        extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[photo_mime]
+                                        new_path = f"shoot_groups/{my_group_no}/{slot}_{uuid.uuid4().hex}.{extension}"
+                                        try:
+                                            upload_photo(new_path, photo_data, photo_mime)
+                                            old_path = existing_photo.get("storage_path") if existing_photo else None
+                                            admin.table("group_photos").upsert({
+                                                "group_number": my_group_no,
+                                                "photo_slot": slot,
+                                                "leader_student_id": identity["id"],
+                                                "storage_path": new_path,
+                                                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                                            }, on_conflict="group_number,photo_slot").execute()
+                                            if old_path:
+                                                admin.storage.from_(BUCKET).remove([old_path])
+                                            st.success(f"第 {slot} 張小組照已上傳。")
+                                            st.rerun()
+                                        except Exception:
+                                            st.error(f"第 {slot} 張照片上傳失敗，請稍後再試。")
+                except Exception:
+                    st.error("小組照片讀取失敗，請稍後再試。")
             else:
                 with st.form("student_create_group_form"):
                     member_seats_text = st.text_area(
@@ -461,6 +533,10 @@ if role == "student":
                                 },
                             ).execute()
                             submitted_group = result.data[0]
+                            admin.table("group_leaders").upsert({
+                                "group_number": submitted_group["group_number"],
+                                "leader_student_id": identity["id"],
+                            }, on_conflict="group_number").execute()
                             st.success(
                                 f"組隊成功！第 {submitted_group['group_number']} 組，"
                                 f"共 {submitted_group['member_count']} 位組員。"
@@ -882,6 +958,28 @@ elif role == "admin":
         st.subheader("全班照片管理")
         st.warning("刪除照片無法復原，請確認選取內容。")
         try:
+            st.markdown("### 📷 各組小組合照")
+            group_photo_rows = (
+                admin.table("group_photos")
+                .select("group_number, photo_slot, storage_path")
+                .order("group_number").order("photo_slot")
+                .execute().data
+            )
+            if not group_photo_rows:
+                st.info("目前尚無小組合照。")
+            for group_photo in group_photo_rows:
+                p1, p2, p3 = st.columns([2, 3, 1])
+                p1.write(f"第 {group_photo['group_number']} 組｜第 {group_photo['photo_slot']} 張")
+                try:
+                    p2.image(make_url(group_photo["storage_path"]), width=150)
+                except Exception:
+                    p2.caption("預覽失敗")
+                if p3.button("刪除小組照", key=f"admin_group_photo_delete_{group_photo['group_number']}_{group_photo['photo_slot']}"):
+                    admin.storage.from_(BUCKET).remove([group_photo["storage_path"]])
+                    admin.table("group_photos").delete().eq("group_number", group_photo["group_number"]).eq("photo_slot", group_photo["photo_slot"]).execute()
+                    st.success("小組照片已刪除。")
+                    st.rerun()
+            st.divider()
             paths = list_all_photos()
             st.write(f"目前找到 {len(paths)} 張照片")
             if not paths:
