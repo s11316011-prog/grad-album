@@ -474,7 +474,7 @@ elif role == "teacher":
             st.error("照片查詢失敗，請稍後再試。")
     with roster_tab:
         st.subheader("小組分組名單")
-        st.caption("此頁僅供查詢，教師無法調整學生組別或修改拍攝資訊。")
+        st.caption("此頁僅供查詢，管理員無法調整學生組別或修改拍攝資訊。")
         try:
             signups = (
                 admin.table("group_signups")
