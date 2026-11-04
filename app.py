@@ -566,6 +566,52 @@ elif role == "admin":
                     st.markdown(f"### 第 {group_no} 組（{len(grouped[group_no])} 人）")
                     for row in grouped[group_no]:
                         st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
+
+            st.divider()
+            st.subheader("管理員調整分組")
+            st.caption("可將學生移到其他組、加入新組，或改為尚未組隊。每位學生仍只會有一筆分組資料。")
+            group_choices = sorted(grouped.keys())
+            next_group_number = max(group_choices, default=0) + 1
+            student_options = {
+                f"{student.get('seat_no')} 號｜{student.get('name')}": student
+                for student in students
+            }
+            selected_student_label = st.selectbox(
+                "選擇要調整的學生",
+                list(student_options.keys()),
+                key="admin_group_student_select",
+            )
+            selected_student = student_options[selected_student_label]
+            current_row = next(
+                (row for row in signups if row.get("student_id") == selected_student["id"]),
+                None,
+            )
+            current_group = current_row.get("assigned_group") if current_row else None
+            group_options = [0] + group_choices
+            if next_group_number not in group_options:
+                group_options.append(next_group_number)
+            current_choice = current_group if current_group is not None else 0
+            selected_group = st.selectbox(
+                "調整為",
+                group_options,
+                index=group_options.index(current_choice) if current_choice in group_options else 0,
+                format_func=lambda value: "尚未組隊" if value == 0 else (f"第 {value} 組（新組）" if value == next_group_number else f"第 {value} 組"),
+                key="admin_group_target_select",
+            )
+            if st.button("儲存分組調整", type="primary", key="admin_save_group_assignment"):
+                try:
+                    admin.rpc(
+                        "admin_set_student_group",
+                        {
+                            "input_student_id": selected_student["id"],
+                            "input_group_number": selected_group if selected_group else None,
+                        },
+                    ).execute()
+                    st.success(f"已更新：{selected_student_label} → " + ("尚未組隊" if selected_group == 0 else f"第 {selected_group} 組"))
+                    st.rerun()
+                except Exception:
+                    st.error("分組調整失敗，請稍後再試。")
+
             if ungrouped:
                 st.markdown("### 尚未組隊")
                 for student in ungrouped:
