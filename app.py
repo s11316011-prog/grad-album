@@ -579,7 +579,37 @@ elif role == "admin":
             st.divider()
             st.subheader("分組管理看板")
             st.caption("Notion 看板模式：每個組別是一個直向欄位，學生是一張張卡片。可橫向查看所有組別，並把學生拖曳到任何組別或「尚未組隊」。")
-            group_choices = sorted(grouped.keys())
+            # 同步既有分組到持久化欄位表，讓空組別重新整理後仍保留
+            saved_columns = (
+                admin.table("student_group_columns")
+                .select("group_number").order("group_number").execute().data
+            )
+            saved_group_numbers = {
+                row["group_number"] for row in saved_columns
+            }
+            for existing_number in grouped:
+                if existing_number not in saved_group_numbers:
+                    admin.table("student_group_columns").insert(
+                        {"group_number": existing_number}
+                    ).execute()
+                    saved_group_numbers.add(existing_number)
+
+            group_choices = sorted(saved_group_numbers | set(grouped.keys()))
+            st.subheader("分組管理看板")
+            st.caption("Notion 看板模式：每個組別是一個直向欄位，學生是一張張卡片。可橫向查看所有組別，並把學生拖曳到任何組別或「尚未組隊」。")
+            if st.button("＋ 新增組別", type="secondary", key="admin_add_group_column"):
+                try:
+                    next_number = 1
+                    while next_number in group_choices:
+                        next_number += 1
+                    admin.table("student_group_columns").insert(
+                        {"group_number": next_number}
+                    ).execute()
+                    st.success(f"已新增第 {next_number} 組。")
+                    st.rerun()
+                except Exception:
+                    st.error("新增組別失敗，請重新整理後再試。")
+
             from streamlit_sortables import sort_items
             student_lookup = {
                 f"{student.get('seat_no')} 號｜{student.get('name')}": student
@@ -591,7 +621,7 @@ elif role == "admin":
                     "items": [
                         f"{row.get('seat_no')} 號｜{row.get('student_name')}"
                         for row in sorted(
-                            grouped[group_no],
+                            grouped.get(group_no, []),
                             key=lambda item: str(item.get("seat_no", ""))
                         )
                     ],
@@ -688,6 +718,9 @@ elif role == "admin":
                         result = admin.rpc(
                             "admin_delete_student_group",
                             {"input_group_number": delete_group_no},
+                        ).execute()
+                        admin.table("student_group_columns").delete().eq(
+                            "group_number", delete_group_no
                         ).execute()
                         released_count = result.data
                         st.success(f"已解散第 {delete_group_no} 組，{released_count} 位學生已回到尚未組隊。")
