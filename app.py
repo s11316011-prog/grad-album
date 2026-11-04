@@ -586,7 +586,11 @@ elif role == "admin":
             st.subheader("管理員拖曳分組看板")
             st.caption("像 BOX 看板一樣，把學生卡片拖曳到目標組別；確認後按「儲存拖曳結果」。")
             group_choices = sorted(grouped.keys())
-            next_group_number = max(group_choices, default=0) + 1
+            # 使用最小的未占用正整數，讓已解散的組別編號可以重新使用
+            used_group_numbers = set(group_choices)
+            next_group_number = 1
+            while next_group_number in used_group_numbers:
+                next_group_number += 1
             from streamlit_sortables import sort_items
             student_lookup = {
                 f"{student.get('seat_no')} 號｜{student.get('name')}": student
