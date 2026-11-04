@@ -539,7 +539,7 @@ elif role == "teacher":
 
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    tab_labels = ["🧾 小組登記與分組", "📍 拍攝小組管理", "🗂️ 全班照片管理"]
+    tab_labels = ["🧾 小組登記與分組", "📢 公告設定", "🗂️ 全班照片管理"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
@@ -583,83 +583,102 @@ elif role == "admin":
                         st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
 
             st.divider()
-            st.subheader("管理員拖曳分組看板")
-            st.caption("像 BOX 看板一樣，把學生卡片拖曳到目標組別；確認後按「儲存拖曳結果」。")
+            st.subheader("雙組並排拖曳調整")
+            st.caption("先選擇兩個組別，兩組會並排顯示；把學生姓名拖曳到另一組下方即可調整。其他組別不會受到影響。")
             group_choices = sorted(grouped.keys())
-            # 使用最小的未占用正整數，讓已解散的組別編號可以重新使用
-            used_group_numbers = set(group_choices)
-            next_group_number = 1
-            while next_group_number in used_group_numbers:
-                next_group_number += 1
             from streamlit_sortables import sort_items
-            student_lookup = {
-                f"{student.get('seat_no')} 號｜{student.get('name')}": student
-                for student in students
-            }
-            board_items = [
-                {
-                    "header": f"第 {number} 組",
-                    "items": [
-                        f"{row.get('seat_no')} 號｜{row.get('student_name')}"
-                        for row in grouped.get(number, [])
-                    ],
+            if len(group_choices) >= 2:
+                left_col, right_col = st.columns(2)
+                with left_col:
+                    left_group = st.selectbox(
+                        "左側組別",
+                        group_choices,
+                        format_func=lambda value: f"第 {value} 組",
+                        key="admin_drag_left_group",
+                    )
+                right_choices = [number for number in group_choices if number != left_group]
+                with right_col:
+                    right_group = st.selectbox(
+                        "右側組別",
+                        right_choices,
+                        format_func=lambda value: f"第 {value} 組",
+                        key="admin_drag_right_group",
+                    )
+                selected_group_numbers = [left_group, right_group]
+                selected_students = [
+                    student for student in students
+                    if any(
+                        row.get("student_id") == student.get("id")
+                        and row.get("assigned_group") in selected_group_numbers
+                        for row in signups
+                    )
+                ]
+                student_lookup = {
+                    f"{student.get('seat_no')} 號｜{student.get('name')}": student
+                    for student in selected_students
                 }
-                for number in group_choices
-            ]
-            board_items += [
-                {
-                    "header": "尚未組隊",
-                    "items": [f"{student.get('seat_no')} 號｜{student.get('name')}" for student in ungrouped],
-                },
-                {"header": f"新增第 {next_group_number} 組", "items": []},
-            ]
-            sorted_boards = sort_items(
-                board_items,
-                multi_containers=True,
-                key="admin_drag_group_board",
-            )
-            st.caption("拖曳完成後，請檢查每個區塊的名單，再儲存。")
-            if st.button("儲存拖曳結果", type="primary", key="admin_save_drag_group_board"):
-                try:
-                    target_groups = {}
-                    for board in sorted_boards:
-                        header = board.get("header", "")
-                        if header == "尚未組隊":
-                            target_group = None
-                        elif header == f"新增第 {next_group_number} 組":
-                            target_group = next_group_number
-                        else:
-                            try:
-                                target_group = int(header.replace("第 ", "").replace(" 組", ""))
-                            except ValueError:
-                                raise ValueError("看板組別標題無法辨識")
-                        for label in board.get("items", []):
-                            student = student_lookup.get(label)
-                            if student:
-                                if student["id"] in target_groups:
-                                    raise ValueError("同一位學生出現在多個看板區塊")
+                pair_board = [
+                    {
+                        "header": f"第 {left_group} 組",
+                        "items": [
+                            f"{row.get('seat_no')} 號｜{row.get('student_name')}"
+                            for row in grouped.get(left_group, [])
+                        ],
+                    },
+                    {
+                        "header": f"第 {right_group} 組",
+                        "items": [
+                            f"{row.get('seat_no')} 號｜{row.get('student_name')}"
+                            for row in grouped.get(right_group, [])
+                        ],
+                    },
+                ]
+                sorted_pair = sort_items(
+                    pair_board,
+                    multi_containers=True,
+                    key=f"admin_drag_pair_{left_group}_{right_group}",
+                )
+                st.caption("組別名稱在上方，學生姓名會排列在各組下方。")
+                if st.button("儲存這兩組的調整", type="primary", key="admin_save_drag_pair"):
+                    try:
+                        target_groups = {}
+                        group_by_header = {
+                            f"第 {left_group} 組": left_group,
+                            f"第 {right_group} 組": right_group,
+                        }
+                        for board in sorted_pair:
+                            target_group = group_by_header.get(board.get("header"))
+                            if target_group is None:
+                                raise ValueError("無法辨識拖曳後的組別")
+                            for label in board.get("items", []):
+                                student = student_lookup.get(label)
+                                if not student or student["id"] in target_groups:
+                                    raise ValueError("學生名單有遺漏或重複")
                                 target_groups[student["id"]] = target_group
-                    if len(target_groups) != len(students):
-                        st.error("看板名單不完整，為避免遺漏學生，沒有儲存任何變更。")
-                        st.stop()
-                    for student in students:
-                        target_group = target_groups.get(student["id"])
-                        current = next(
-                            (row.get("assigned_group") for row in signups if row.get("student_id") == student["id"]),
-                            None,
-                        )
-                        if current != target_group:
-                            admin.rpc(
-                                "admin_set_student_group",
-                                {
-                                    "input_student_id": student["id"],
-                                    "input_group_number": target_group,
-                                },
-                            ).execute()
-                    st.success("拖曳分組結果已儲存。")
-                    st.rerun()
-                except Exception:
-                    st.error("拖曳分組儲存失敗，請重新整理確認目前名單後再試。")
+                        if set(target_groups.keys()) != {student["id"] for student in selected_students}:
+                            st.error("兩組名單不完整或有重複，沒有儲存任何變更。")
+                            st.stop()
+                        for student in selected_students:
+                            target_group = target_groups[student["id"]]
+                            current_group = next(
+                                row.get("assigned_group")
+                                for row in signups
+                                if row.get("student_id") == student["id"]
+                            )
+                            if current_group != target_group:
+                                admin.rpc(
+                                    "admin_set_student_group",
+                                    {
+                                        "input_student_id": student["id"],
+                                        "input_group_number": target_group,
+                                    },
+                                ).execute()
+                        st.success(f"第 {left_group} 組與第 {right_group} 組的調整已儲存。")
+                        st.rerun()
+                    except Exception:
+                        st.error("兩組調整儲存失敗，請重新整理後再試。")
+            else:
+                st.info("至少需要有兩個已成立的組別，才能選擇兩組並排拖曳調整。")
 
             if group_choices:
                 st.markdown("### 刪除整組")
