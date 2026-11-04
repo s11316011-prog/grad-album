@@ -57,6 +57,22 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
   font-family: 'Noto Sans TC', sans-serif !important;
 }
 .block-container {max-width:1120px;padding-top:1.5rem;}
+/* Keep the school emblem clear of Streamlit's fixed top header. */
+[data-testid="stHeader"] {
+  position: relative !important;
+  z-index: 0 !important;
+  background: transparent !important;
+}
+[data-testid="stMainBlockContainer"] {
+  position: relative !important;
+  z-index: 1 !important;
+  padding-top: 3.5rem !important;
+}
+[data-testid="stImage"] {
+  position: relative !important;
+  z-index: 2 !important;
+  margin-top: 0.5rem !important;
+}
 /* Force readable text on every Streamlit content surface, even if the device uses dark mode. */
 [data-testid="stAppViewContainer"] :is(p, label, h1, h2, h3, h4, h5, h6, li, summary, .stMarkdown, [data-testid="stMarkdownContainer"], [data-testid="stCaptionContainer"]) {
   color: #173b61 !important;
