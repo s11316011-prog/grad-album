@@ -361,7 +361,7 @@ elif role == "admin":
                     with st.container(border=True):
                         left, right = st.columns([3, 2])
                         left.write(label)
-                        options = [0] + list(range(1, 21))
+                        options = [0] + list(range(1, len(signups) + 2))
                         selected = right.selectbox(
                             "分配組別（0 代表尚未分組）",
                             options,
