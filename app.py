@@ -312,7 +312,7 @@ if role == "student":
         "📤 個人生活照繳交",
         "🖼️ 我的照片",
         "📸 班級團體照",
-        "👥 小組拍攝資訊",
+        "👥 分組登記&名單",
         "📝 個人生活照須知",
     ])
     with upload_tab:
@@ -366,7 +366,7 @@ if role == "student":
         st.markdown("1. YA 手勢\n2. 小愛心\n3. 戳臉")
         st.warning("請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。")
     with group_tab:
-        st.subheader("小組拍攝資訊")
+        st.subheader("分組登記&名單")
         st.caption("各組拍攝地點、集合時間、注意事項、地點照片及組員名單，以畢冊製作組公布的資料為準。")
         try:
             groups = get_groups()
