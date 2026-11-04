@@ -290,10 +290,10 @@ st.caption("登入有效時間：30 分鐘")
 if role == "student":
     st.success(f"學生登入成功：{identity['seat_no']} 號｜{identity['name']}")
 elif role == "teacher":
-    st.success("管理員登入成功｜最高管理權限")
+    st.success("管理員登入成功")
 elif role == "admin":
     if identity.get("staff_role") in ("teacher", "super_admin"):
-        st.success("管理員登入成功｜最高管理權限")
+        st.success("管理員登入成功")
     else:
         st.success("管理員登入成功")
 if st.button("登出"):
@@ -521,7 +521,13 @@ elif role == "teacher":
             st.error("小組名單讀取失敗，請稍後再試。")
 
 elif role == "admin":
-    signup_tab, group_tab, photo_tab, staff_tab = st.tabs(["🧾 小組登記與分組", "📍 拍攝小組管理", "🗂️ 全班照片管理", "🔐 帳號管理"])
+    is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
+    tab_labels = ["🧾 小組登記與分組", "📍 拍攝小組管理", "🗂️ 全班照片管理"]
+    if is_full_admin:
+        tab_labels.append("🔐 帳號管理")
+    created_tabs = st.tabs(tab_labels)
+    signup_tab, group_tab, photo_tab = created_tabs[:3]
+    staff_tab = created_tabs[3] if is_full_admin else None
     with signup_tab:
         st.subheader("學生自行組隊結果")
         st.caption("學生由組長建立小組並一次送出；每位學生只能屬於一組。管理員可查看各組名單及尚未組隊的學生。")
@@ -736,91 +742,90 @@ elif role == "admin":
         except Exception:
             st.error("照片清單讀取失敗，請確認 Storage bucket 名稱及權限。")
 
-    with staff_tab:
-        is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-        actor_username = (identity.get("username") or "").strip().lower()
-        st.subheader("管理員帳號管理")
-        st.caption("帳號資料存放於 Supabase；密碼只保存 PBKDF2 雜湊值，不保存明文。")
-        with st.form("create_staff_account", clear_on_submit=True):
-            new_username = st.text_input("新帳號")
-            allowed_role_labels = ["管理員（最高權限）", "管理員"] if is_full_admin else ["管理員"]
-            new_role_label = st.selectbox("身分", allowed_role_labels)
-            new_password = st.text_input("設定密碼（至少 12 個字元）", type="password")
-            confirm_password = st.text_input("再次輸入密碼", type="password")
-            create_staff = st.form_submit_button("新增帳號")
-        if create_staff:
-            if not new_username.strip():
-                st.warning("請輸入帳號。")
-            elif len(new_password) < 12:
-                st.warning("密碼至少需要 12 個字元。")
-            elif new_password != confirm_password:
-                st.warning("兩次輸入的密碼不一致。")
-            else:
-                try:
-                    duplicate = (
-                        admin.table("staff_accounts")
-                        .select("id")
-                        .ilike("username", new_username.strip())
-                        .limit(1).execute().data
-                    )
-                    if duplicate:
-                        st.error("這個帳號已經存在，請換一個帳號。")
-                    else:
-                        admin.table("staff_accounts").insert({
-                            "username": new_username.strip(),
-                            "role": (("super_admin" if actor_username == "zhang" else "teacher") if new_role_label == "管理員（最高權限）" else "admin"),
-                            "password_hash": hash_staff_password(new_password),
-                            "is_active": True,
-                        }).execute()
-                        st.success("帳號已安全寫入 Supabase。")
-                        st.rerun()
-                except Exception:
-                    st.error("新增帳號失敗，請稍後再試。")
-        st.divider()
-        st.subheader("現有帳號")
-        try:
-            staff_rows = (
-                admin.table("staff_accounts")
-                .select("id, username, role, is_active, created_at")
-                .order("role")
-                .order("username")
-                .execute().data
-            )
-            if not staff_rows:
-                st.info("目前沒有管理員帳號。")
-            for staff in staff_rows:
-                staff_id = staff["id"]
-                is_protected_account = staff["role"] in ("teacher", "super_admin")
-                role_label = "管理員（最高權限）" if is_protected_account else "管理員"
-                with st.expander(f"{role_label}｜{staff['username']}｜{'啟用中' if staff['is_active'] else '已停用'}"):
-                    if is_protected_account and not is_full_admin:
-                        st.info("此為最高權限管理員帳號，只有最高權限管理員可以修改。")
-                        continue
-                    with st.form(f"edit_staff_{staff_id}"):
-                        active_value = st.checkbox("啟用此帳號", value=staff["is_active"])
-                        reset_password = st.text_input("更換密碼（留空代表不更換）", type="password")
-                        save_staff = st.form_submit_button("儲存帳號設定")
-                    if save_staff:
-                        try:
-                            if is_protected_account and not is_full_admin:
-                                st.error("權限不足：不能修改最高權限管理員帳號。")
-                                st.stop()
-                            if staff["role"] == "admin" and staff["is_active"] and not active_value:
-                                active_admins = sum(1 for item in staff_rows if item["role"] == "admin" and item["is_active"])
-                                if active_admins <= 1:
-                                    st.error("至少必須保留一位啟用中的管理員。")
-                                    st.stop()
-                            updates = {"is_active": active_value, "updated_at": datetime.now(timezone.utc).isoformat()}
-                            if reset_password:
-                                if len(reset_password) < 12:
-                                    st.error("新密碼至少需要 12 個字元。")
-                                    st.stop()
-                                updates["password_hash"] = hash_staff_password(reset_password)
-                            admin.table("staff_accounts").update(updates).eq("id", staff_id).execute()
-                            st.success("帳號設定已更新。")
+    if is_full_admin and staff_tab is not None:
+        with staff_tab:
+            is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
+            actor_username = (identity.get("username") or "").strip().lower()
+            st.subheader("管理員帳號管理")
+            st.caption("帳號資料存放於 Supabase；密碼只保存 PBKDF2 雜湊值，不保存明文。")
+            with st.form("create_staff_account", clear_on_submit=True):
+                new_username = st.text_input("新帳號")
+                new_password = st.text_input("設定密碼（至少 12 個字元）", type="password")
+                confirm_password = st.text_input("再次輸入密碼", type="password")
+                create_staff = st.form_submit_button("新增帳號")
+            if create_staff:
+                if not new_username.strip():
+                    st.warning("請輸入帳號。")
+                elif len(new_password) < 12:
+                    st.warning("密碼至少需要 12 個字元。")
+                elif new_password != confirm_password:
+                    st.warning("兩次輸入的密碼不一致。")
+                else:
+                    try:
+                        duplicate = (
+                            admin.table("staff_accounts")
+                            .select("id")
+                            .ilike("username", new_username.strip())
+                            .limit(1).execute().data
+                        )
+                        if duplicate:
+                            st.error("這個帳號已經存在，請換一個帳號。")
+                        else:
+                            admin.table("staff_accounts").insert({
+                                "username": new_username.strip(),
+                                "role": "admin",
+                                "password_hash": hash_staff_password(new_password),
+                                "is_active": True,
+                            }).execute()
+                            st.success("帳號已安全寫入 Supabase。")
                             st.rerun()
-                        except Exception:
-                            st.error("帳號更新失敗，請稍後再試。")
-        except Exception:
-            st.error("無法讀取帳號清單，請稍後再試。")
-
+                    except Exception:
+                        st.error("新增帳號失敗，請稍後再試。")
+            st.divider()
+            st.subheader("現有帳號")
+            try:
+                staff_rows = (
+                    admin.table("staff_accounts")
+                    .select("id, username, role, is_active, created_at")
+                    .order("role")
+                    .order("username")
+                    .execute().data
+                )
+                if not staff_rows:
+                    st.info("目前沒有管理員帳號。")
+                for staff in staff_rows:
+                    staff_id = staff["id"]
+                    is_protected_account = staff["role"] in ("teacher", "super_admin")
+                    role_label = "管理員"
+                    with st.expander(f"{role_label}｜{staff['username']}｜{'啟用中' if staff['is_active'] else '已停用'}"):
+                        if is_protected_account and not is_full_admin:
+                            st.info("此為最高權限管理員帳號，只有最高權限管理員可以修改。")
+                            continue
+                        with st.form(f"edit_staff_{staff_id}"):
+                            active_value = st.checkbox("啟用此帳號", value=staff["is_active"])
+                            reset_password = st.text_input("更換密碼（留空代表不更換）", type="password")
+                            save_staff = st.form_submit_button("儲存帳號設定")
+                        if save_staff:
+                            try:
+                                if is_protected_account and not is_full_admin:
+                                    st.error("權限不足：不能修改最高權限管理員帳號。")
+                                    st.stop()
+                                if staff["role"] == "admin" and staff["is_active"] and not active_value:
+                                    active_admins = sum(1 for item in staff_rows if item["role"] == "admin" and item["is_active"])
+                                    if active_admins <= 1:
+                                        st.error("至少必須保留一位啟用中的管理員。")
+                                        st.stop()
+                                updates = {"is_active": active_value, "updated_at": datetime.now(timezone.utc).isoformat()}
+                                if reset_password:
+                                    if len(reset_password) < 12:
+                                        st.error("新密碼至少需要 12 個字元。")
+                                        st.stop()
+                                    updates["password_hash"] = hash_staff_password(reset_password)
+                                admin.table("staff_accounts").update(updates).eq("id", staff_id).execute()
+                                st.success("帳號設定已更新。")
+                                st.rerun()
+                            except Exception:
+                                st.error("帳號更新失敗，請稍後再試。")
+            except Exception:
+                st.error("無法讀取帳號清單，請稍後再試。")
+    
