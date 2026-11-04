@@ -48,11 +48,54 @@ supabase, admin = get_clients(SUPABASE_URL, SUPABASE_KEY, SUPABASE_SECRET_KEY)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800&display=swap');
-html, body, [data-testid="stAppViewContainer"] {font-family:'Noto Sans TC',sans-serif;background:#f3f8fd;}
+:root { color-scheme: light !important; }
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
+[data-testid="stMainBlockContainer"], [data-testid="stHeader"] {
+  color-scheme: light !important;
+  background: #f3f8fd !important;
+  color: #173b61 !important;
+  font-family: 'Noto Sans TC', sans-serif !important;
+}
 .block-container {max-width:1120px;padding-top:1.5rem;}
+/* Force readable text on every Streamlit content surface, even if the device uses dark mode. */
+[data-testid="stAppViewContainer"] :is(p, label, h1, h2, h3, h4, h5, h6, li, summary, .stMarkdown, [data-testid="stMarkdownContainer"], [data-testid="stCaptionContainer"]) {
+  color: #173b61 !important;
+}
+[data-testid="stWidgetLabel"] *, [data-testid="stMarkdownContainer"] *,
+[data-testid="stCaptionContainer"] *, [data-testid="stText"], .stRadio label,
+.stCheckbox label, .stSelectbox label, .stTextInput label, .stTextArea label,
+.stFileUploader label { color: #173b61 !important; }
+/* Inputs */
+[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
+[data-testid="stTextArea"] textarea, [data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+  background: #ffffff !important; color: #173b61 !important;
+  -webkit-text-fill-color: #173b61 !important; border-color: #b8cde0 !important;
+}
+[data-testid="stTextInput"] input::placeholder, [data-testid="stTextArea"] textarea::placeholder {
+  color: #6b8197 !important; -webkit-text-fill-color: #6b8197 !important;
+}
+/* Tabs, buttons, cards, expanders and notices */
+[data-testid="stTabs"] button, [data-testid="stBaseButton"],
+.stButton button, [data-testid="stExpander"], [data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stAlert"], [data-testid="stNotification"] {
+  color: #173b61 !important;
+}
+.stButton button, [data-testid="stBaseButton"] {
+  background: #e3effa !important; border: 1px solid #9bbbd8 !important;
+}
+.stButton button p, [data-testid="stBaseButton"] p { color: #173b61 !important; }
+[data-testid="stTabs"] button p { color: #173b61 !important; }
+[data-testid="stExpander"], [data-testid="stVerticalBlockBorderWrapper"] {
+  background: #ffffff !important; border-color: #c7d9e9 !important;
+}
+[data-testid="stFileUploader"], [data-testid="stFileUploader"] section,
+[data-testid="stDataFrame"], [data-testid="stTable"] {
+  background: #ffffff !important; color: #173b61 !important;
+}
 .hero {text-align:center;color:#173b61;padding:8px 0 20px;}
-.hero h1 {font-size:2rem;font-weight:800;}
-.hero p {color:#58738e;}
+.hero h1 {font-size:2rem;font-weight:800;color:#173b61 !important;}
+.hero p {color:#58738e !important;}
 </style>
 """, unsafe_allow_html=True)
 
