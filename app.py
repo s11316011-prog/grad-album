@@ -281,7 +281,7 @@ if role is None:
             except Exception:
                 st.error("教師登入驗證暫時無法使用，請稍後再試。")
     with admin_tab:
-        st.subheader("畢冊製作組管理專區")
+        st.subheader("管理員專區")
         username = st.text_input("管理帳號", key="admin_user")
         password = st.text_input("管理密碼", type="password", key="admin_pwd")
         if st.button("登入", type="primary", use_container_width=True, key="admin_login_button"):
