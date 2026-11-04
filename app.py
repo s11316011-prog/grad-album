@@ -284,7 +284,7 @@ if role is None:
         st.subheader("畢冊製作組管理專區")
         username = st.text_input("管理帳號", key="admin_user")
         password = st.text_input("管理密碼", type="password", key="admin_pwd")
-        if st.button("登入管理專區", type="primary", use_container_width=True):
+        if st.button("登入", type="primary", use_container_width=True, key="admin_login_button"):
             try:
                 matched = verify_staff_account(username, password, "admin")
                 if matched:
