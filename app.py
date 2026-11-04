@@ -612,6 +612,36 @@ elif role == "admin":
                 except Exception:
                     st.error("分組調整失敗，請稍後再試。")
 
+            if group_choices:
+                st.markdown("### 刪除整組")
+                st.warning("刪除後，該組所有學生會回到「尚未組隊」，不會刪除學生資料。")
+                delete_group_no = st.selectbox(
+                    "選擇要刪除的組別",
+                    group_choices,
+                    format_func=lambda value: f"第 {value} 組（{len(grouped[value])} 人）",
+                    key="admin_delete_group_select",
+                )
+                confirm_delete_group = st.checkbox(
+                    f"我確認要解散第 {delete_group_no} 組",
+                    key="admin_confirm_delete_group",
+                )
+                if st.button(
+                    "刪除分組並讓組員回到未分組",
+                    type="secondary",
+                    disabled=not confirm_delete_group,
+                    key="admin_delete_group_button",
+                ):
+                    try:
+                        result = admin.rpc(
+                            "admin_delete_student_group",
+                            {"input_group_number": delete_group_no},
+                        ).execute()
+                        released_count = result.data
+                        st.success(f"已解散第 {delete_group_no} 組，{released_count} 位學生已回到尚未組隊。")
+                        st.rerun()
+                    except Exception:
+                        st.error("刪除分組失敗，請稍後再試。")
+
             if ungrouped:
                 st.markdown("### 尚未組隊")
                 for student in ungrouped:
