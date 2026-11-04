@@ -218,7 +218,24 @@ def show_group(group):
     c1, c2 = st.columns(2)
     c1.write(f"**拍攝地點：** {group.get('location') or '未設定'}")
     c2.write(f"**集合時間：** {group.get('meeting_time') or '未設定'}")
-    st.write(f"**組員名單：** {group.get('members') or '未設定'}")
+    linked_group = group.get("group_number")
+    if linked_group is not None:
+        member_rows = (
+            admin.table("group_signups")
+            .select("seat_no, student_name")
+            .eq("assigned_group", linked_group)
+            .order("seat_no").execute().data
+        )
+        if member_rows:
+            member_text = "、".join(
+                f"{row.get('seat_no')} 號｜{row.get('student_name')}"
+                for row in member_rows
+            )
+        else:
+            member_text = "目前尚無組員"
+        st.write(f"**實際組員名單（第 {linked_group} 組）：** {member_text}")
+    else:
+        st.write(f"**組員名單：** {group.get('members') or '尚未連結學生分組'}")
     st.write(f"**注意事項：** {group.get('notes') or '無'}")
     if group.get("photo_path"):
         try:
@@ -678,11 +695,26 @@ elif role == "admin":
             st.error("無法讀取小組名單，請確認 group_signups 資料表設定。")
     with group_tab:
         st.subheader("新增拍攝小組")
+        signup_rows_for_link = (
+            admin.table("group_signups")
+            .select("assigned_group")
+            .not_.is_("assigned_group", "null")
+            .execute().data
+        )
+        linkable_group_numbers = sorted({
+            row["assigned_group"] for row in signup_rows_for_link
+            if row.get("assigned_group") is not None
+        })
         with st.form("new_group_form", clear_on_submit=True):
             group_name = st.text_input("組別名稱")
+            linked_group_number = st.selectbox(
+                "連結學生分組（讓組員名單自動同步）",
+                [0] + linkable_group_numbers,
+                format_func=lambda value: "不連結" if value == 0 else f"第 {value} 組",
+            )
             location = st.text_input("拍攝地點")
             meeting_time = st.text_input("集合時間")
-            members = st.text_area("組員名單")
+            members = st.text_area("備註名單（未連結時使用）")
             notes = st.text_area("拍攝注意事項")
             location_photo = st.file_uploader("地點照片（JPG、PNG、WEBP）", type=["jpg", "jpeg", "png", "webp"], key="new_group_photo")
             submitted = st.form_submit_button("新增小組")
@@ -701,6 +733,7 @@ elif role == "admin":
                     upload_photo(photo_path, data, mime)
                 admin.table("shooting_groups").insert({
                     "group_name": group_name.strip(),
+                    "group_number": linked_group_number or None,
                     "location": location.strip(),
                     "meeting_time": meeting_time.strip(),
                     "members": members.strip(),
@@ -718,6 +751,17 @@ elif role == "admin":
                 with st.expander(f"{group.get('group_name')}｜編輯"):
                     with st.form(f"edit_group_{gid}"):
                         gn = st.text_input("組別名稱", value=group.get("group_name") or "", key=f"gn{gid}")
+                        current_link = group.get("group_number") or 0
+                        link_options = [0] + linkable_group_numbers
+                        if current_link and current_link not in link_options:
+                            link_options.append(current_link)
+                        linked_number_edit = st.selectbox(
+                            "連結學生分組（組員名單自動同步）",
+                            link_options,
+                            index=link_options.index(current_link),
+                            format_func=lambda value: "不連結" if value == 0 else f"第 {value} 組",
+                            key=f"link_group_{gid}",
+                        )
                         loc = st.text_input("拍攝地點", value=group.get("location") or "", key=f"loc{gid}")
                         mt = st.text_input("集合時間", value=group.get("meeting_time") or "", key=f"mt{gid}")
                         mem = st.text_area("組員名單", value=group.get("members") or "", key=f"mem{gid}")
@@ -726,7 +770,9 @@ elif role == "admin":
                         save = st.form_submit_button("儲存修改")
                     if save:
                         update = {
-                            "group_name": gn.strip(), "location": loc.strip(),
+                            "group_name": gn.strip(),
+                            "group_number": linked_number_edit or None,
+                            "location": loc.strip(),
                             "meeting_time": mt.strip(), "members": mem.strip(),
                             "notes": nt.strip(),
                         }
