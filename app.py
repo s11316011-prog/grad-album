@@ -116,9 +116,25 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
 """, unsafe_allow_html=True)
 
 try:
-    st.image("fsvs_logo.png", width=88)
+    from PIL import Image
+    from io import BytesIO
+
+    logo = Image.open("fsvs_logo.png").convert("RGBA")
+    pixels = logo.load()
+    for y in range(logo.height):
+        for x in range(logo.width):
+            red, green, blue, alpha = pixels[x, y]
+            # Make the near-white outer background transparent.
+            if min(red, green, blue) >= 246:
+                pixels[x, y] = (red, green, blue, 0)
+            elif min(red, green, blue) >= 232 and max(red, green, blue) >= 240:
+                opacity = int(255 * (246 - min(red, green, blue)) / 14)
+                pixels[x, y] = (red, green, blue, min(alpha, max(0, opacity)))
+    logo_bytes = BytesIO()
+    logo.save(logo_bytes, format="PNG")
+    st.image(logo_bytes.getvalue(), width=88)
 except Exception:
-    pass
+    st.image("fsvs_logo.png", width=88)
 st.markdown(
     '<div class="hero"><h1>國立鳳山高級商工職業學校</h1>'
     '<p>116級 國三一｜畢業紀念冊照片與拍攝資訊平台</p></div>',
