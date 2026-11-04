@@ -9,12 +9,16 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 @st.cache_resource
 def get_supabase_client():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# 建立 Supabase 連線
+supabase: Client = get_supabase_client()
+
+# 測試 Supabase 查詢
 try:
     supabase.table("grad_album").select("id").limit(1).execute()
-    st.success("Supabase 連線成功！")
+    st.success("Supabase 查詢成功！")
 except Exception as e:
-    st.error(f"Supabase 連線失敗：{e}")
-supabase: Client = get_supabase_client()
+    st.error(f"Supabase 查詢失敗：{e}")
 
 # --- 網頁基本設定 ---
 st.set_page_config(
