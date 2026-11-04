@@ -693,6 +693,55 @@ elif role == "admin":
                     saved_group_numbers.add(existing_number)
 
             group_choices = sorted(saved_group_numbers | set(grouped.keys()))
+
+            st.markdown("### 👤 設定各組組長")
+            st.caption("每組指定一位組長，只有該組組長可以上傳四張小組合照。")
+            try:
+                leader_records = admin.table("group_leaders").select("group_number, leader_student_id").execute().data
+                leaders_by_group = {row["group_number"]: row["leader_student_id"] for row in leader_records}
+                used_leader_ids = set(leaders_by_group.values())
+                for leader_group_no in group_choices:
+                    candidates = sorted(
+                        grouped.get(leader_group_no, []),
+                        key=lambda row: str(row.get("seat_no", ""))
+                    )
+                    if not candidates:
+                        continue
+                    current_leader_id = leaders_by_group.get(leader_group_no)
+                    available_candidates = [
+                        row for row in candidates
+                        if row.get("student_id") == current_leader_id
+                        or row.get("student_id") not in (used_leader_ids - ({current_leader_id} if current_leader_id else set()))
+                    ]
+                    candidate_ids = [row["student_id"] for row in available_candidates]
+                    if not candidate_ids:
+                        st.warning(f"第 {leader_group_no} 組目前沒有可指定的組長，請先確認其他組的組長設定。")
+                        continue
+                    current_index = candidate_ids.index(current_leader_id) if current_leader_id in candidate_ids else 0
+                    with st.form(f"set_group_leader_{leader_group_no}"):
+                        selected_leader_id = st.selectbox(
+                            f"第 {leader_group_no} 組組長",
+                            candidate_ids,
+                            index=current_index,
+                            format_func=lambda value, rows=available_candidates: next(
+                                f"{row.get('seat_no')} 號｜{row.get('student_name')}"
+                                for row in rows if row.get("student_id") == value
+                            ),
+                        )
+                        save_leader = st.form_submit_button("儲存組長設定")
+                    if save_leader:
+                        try:
+                            admin.table("group_leaders").upsert({
+                                "group_number": leader_group_no,
+                                "leader_student_id": selected_leader_id,
+                            }, on_conflict="group_number").execute()
+                            st.success(f"第 {leader_group_no} 組組長已設定。")
+                            st.rerun()
+                        except Exception:
+                            st.error(f"第 {leader_group_no} 組組長設定失敗，請確認該學生是否已擔任其他組組長。")
+            except Exception:
+                st.error("組長設定讀取失敗，請確認 group_leaders 資料表。")
+
             st.subheader("分組管理看板")
             if group_choices:
                 st.markdown("**目前組別：** " + "　｜　".join(
