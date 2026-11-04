@@ -272,7 +272,7 @@ if role is None:
         password = st.text_input("管理員密碼", type="password", key="admin_pwd")
         if st.button("登入", type="primary", use_container_width=True, key="admin_login_button"):
             try:
-                matched = verify_staff_account(username, password, ["admin", "teacher"])
+                matched = verify_staff_account(username, password, ["admin", "teacher", "super_admin"])
                 if matched:
                     set_session("admin", {
                         "username": matched["username"],
@@ -292,10 +292,8 @@ if role == "student":
 elif role == "teacher":
     st.success("管理員登入成功｜最高管理權限")
 elif role == "admin":
-    if identity.get("staff_role") == "teacher":
-        st.success("教師登入成功｜最高管理權限")
-    elif identity.get("username", "").lower() == "zhang":
-        st.success("最高管理員登入成功")
+    if identity.get("staff_role") in ("teacher", "super_admin"):
+        st.success("管理員登入成功｜最高管理權限")
     else:
         st.success("管理員登入成功")
 if st.button("登出"):
@@ -454,7 +452,7 @@ elif role == "teacher":
     photo_tab, roster_tab = st.tabs(["🖼️ 全班照片查詢", "👥 小組分組名單"])
     with photo_tab:
         st.subheader("全班學生照片")
-        st.caption("教師僅能查看照片，沒有下載、刪除或修改權限。")
+        st.caption("管理員僅能查看照片，沒有下載、刪除或修改權限。")
         try:
             student_paths = [
                 path for path in list_all_photos()
@@ -739,11 +737,14 @@ elif role == "admin":
             st.error("照片清單讀取失敗，請確認 Storage bucket 名稱及權限。")
 
     with staff_tab:
+        is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
+        actor_username = (identity.get("username") or "").strip().lower()
         st.subheader("管理員帳號管理")
         st.caption("帳號資料存放於 Supabase；密碼只保存 PBKDF2 雜湊值，不保存明文。")
         with st.form("create_staff_account", clear_on_submit=True):
             new_username = st.text_input("新帳號")
-            new_role_label = st.selectbox("身分", ["管理員（最高權限）", "管理員"])
+            allowed_role_labels = ["管理員（最高權限）", "管理員"] if is_full_admin else ["管理員"]
+            new_role_label = st.selectbox("身分", allowed_role_labels)
             new_password = st.text_input("設定密碼（至少 12 個字元）", type="password")
             confirm_password = st.text_input("再次輸入密碼", type="password")
             create_staff = st.form_submit_button("新增帳號")
@@ -767,7 +768,7 @@ elif role == "admin":
                     else:
                         admin.table("staff_accounts").insert({
                             "username": new_username.strip(),
-                            "role": "teacher" if new_role_label == "管理員（最高權限）" else "admin",
+                            "role": (("super_admin" if actor_username == "zhang" else "teacher") if new_role_label == "管理員（最高權限）" else "admin"),
                             "password_hash": hash_staff_password(new_password),
                             "is_active": True,
                         }).execute()
@@ -789,14 +790,21 @@ elif role == "admin":
                 st.info("目前沒有管理員帳號。")
             for staff in staff_rows:
                 staff_id = staff["id"]
-                role_label = "管理員（最高權限）" if staff["role"] == "teacher" else "管理員"
+                is_protected_account = staff["role"] in ("teacher", "super_admin")
+                role_label = "管理員（最高權限）" if is_protected_account else "管理員"
                 with st.expander(f"{role_label}｜{staff['username']}｜{'啟用中' if staff['is_active'] else '已停用'}"):
+                    if is_protected_account and not is_full_admin:
+                        st.info("此為最高權限管理員帳號，只有最高權限管理員可以修改。")
+                        continue
                     with st.form(f"edit_staff_{staff_id}"):
                         active_value = st.checkbox("啟用此帳號", value=staff["is_active"])
                         reset_password = st.text_input("更換密碼（留空代表不更換）", type="password")
                         save_staff = st.form_submit_button("儲存帳號設定")
                     if save_staff:
                         try:
+                            if is_protected_account and not is_full_admin:
+                                st.error("權限不足：不能修改最高權限管理員帳號。")
+                                st.stop()
                             if staff["role"] == "admin" and staff["is_active"] and not active_value:
                                 active_admins = sum(1 for item in staff_rows if item["role"] == "admin" and item["is_active"])
                                 if active_admins <= 1:
