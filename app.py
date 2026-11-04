@@ -5,7 +5,7 @@ import base64
 import hashlib
 import secrets
 from importlib.metadata import version
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
 
 st.set_page_config(
@@ -377,14 +377,37 @@ if role == "student":
         st.warning("請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。")
     with announcement_tab:
         st.subheader("📢 最新公告")
+        st.caption("查看畢冊製作組發布的重要通知、拍攝異動及活動提醒。")
         try:
-            groups = get_groups()
-            if groups:
-                for group in groups:
-                    with st.container(border=True):
-                        show_group(group)
-            else:
-                st.info("目前沒有新的公告。")
+            now_utc = datetime.now(timezone.utc)
+            notices = (
+                admin.table("announcements")
+                .select("id, title, content, category, is_pinned, publish_at, expires_at")
+                .eq("status", "published")
+                .order("is_pinned", desc=True)
+                .order("publish_at", desc=True)
+                .execute().data
+            )
+            visible_notices = []
+            for notice in notices:
+                publish_at = datetime.fromisoformat(notice["publish_at"].replace("Z", "+00:00"))
+                expires_at = notice.get("expires_at")
+                if publish_at <= now_utc and (
+                    not expires_at or datetime.fromisoformat(expires_at.replace("Z", "+00:00")) > now_utc
+                ):
+                    visible_notices.append(notice)
+            if not visible_notices:
+                st.info("目前沒有已發布的公告。")
+            for notice in visible_notices:
+                with st.container(border=True):
+                    flags = []
+                    if notice.get("is_pinned"):
+                        flags.append("📌 置頂")
+                    flags.append(notice.get("category") or "一般通知")
+                    st.markdown(f"### {' '.join(flags)}")
+                    st.markdown(f"**{notice['title']}**")
+                    st.write(notice["content"])
+                    st.caption(f"發布時間：{notice['publish_at'][:16].replace('T', ' ')}")
         except Exception:
             st.error("公告讀取失敗，請稍後再試。")
     with group_tab:
@@ -741,7 +764,112 @@ elif role == "admin":
         except Exception:
             st.error("無法讀取小組名單，請確認 group_signups 資料表設定。")
     with group_tab:
-        st.subheader("新增拍攝小組")
+        st.subheader("📢 公告管理中心")
+        st.caption("集中管理班級通知。草稿不會顯示給學生；排程公告會在指定時間自動出現在學生的「最新公告」。")
+        announcement_categories = ["一般通知", "緊急通知", "拍攝異動", "活動與集合", "照片繳交", "分組通知", "畢冊進度"]
+        taipei_tz = timezone(timedelta(hours=8))
+        now_taipei = datetime.now(taipei_tz)
+        with st.expander("➕ 新增公告", expanded=True):
+            with st.form("create_announcement_form", clear_on_submit=True):
+                new_notice_title = st.text_input("公告標題", placeholder="例如：明日拍攝時間調整")
+                new_notice_category = st.selectbox("公告類型", announcement_categories)
+                new_notice_content = st.text_area("公告內容", height=150, placeholder="請輸入公告內容，可寫集合時間、地點、注意事項等。")
+                new_notice_status = st.selectbox("發布狀態", ["draft", "published"], format_func=lambda x: "立即發布／依指定時間發布" if x == "published" else "儲存草稿")
+                new_notice_date = st.date_input("發布日期", value=now_taipei.date())
+                new_notice_time = st.time_input("發布時間", value=now_taipei.time().replace(second=0, microsecond=0))
+                new_notice_pin = st.checkbox("📌 置頂公告")
+                new_notice_expiry_enabled = st.checkbox("設定公告下架日期")
+                new_notice_expiry = st.date_input("下架日期（當日結束後自動隱藏）", value=now_taipei.date(), disabled=not new_notice_expiry_enabled)
+                create_notice = st.form_submit_button("建立公告", type="primary")
+            if create_notice:
+                if not new_notice_title.strip() or not new_notice_content.strip():
+                    st.warning("公告標題和內容都不能空白。")
+                else:
+                    publish_dt = datetime.combine(new_notice_date, new_notice_time).replace(tzinfo=taipei_tz)
+                    expiry_dt = datetime.combine(new_notice_expiry, datetime.max.time()).replace(tzinfo=taipei_tz) if new_notice_expiry_enabled else None
+                    if expiry_dt and expiry_dt <= publish_dt:
+                        st.error("下架日期必須晚於發布時間。")
+                    else:
+                        try:
+                            admin.table("announcements").insert({
+                                "title": new_notice_title.strip(),
+                                "content": new_notice_content.strip(),
+                                "category": new_notice_category,
+                                "status": new_notice_status,
+                                "is_pinned": new_notice_pin,
+                                "publish_at": publish_dt.astimezone(timezone.utc).isoformat(),
+                                "expires_at": expiry_dt.astimezone(timezone.utc).isoformat() if expiry_dt else None,
+                            }).execute()
+                            st.success("公告已建立。")
+                            st.rerun()
+                        except Exception:
+                            st.error("公告建立失敗，請稍後再試。")
+        st.divider()
+        st.subheader("📋 公告清單與管理")
+        try:
+            notice_rows = (
+                admin.table("announcements")
+                .select("*")
+                .order("created_at", desc=True)
+                .execute().data
+            )
+            if not notice_rows:
+                st.info("目前還沒有公告，先使用上方表單建立第一則公告。")
+            for notice in notice_rows:
+                notice_id = notice["id"]
+                status_label = {"draft": "草稿", "published": "已發布／排程中", "archived": "已下架"}.get(notice.get("status"), "未知")
+                pin_label = "📌 " if notice.get("is_pinned") else ""
+                with st.expander(f"{pin_label}{notice.get('title')}｜{notice.get('category')}｜{status_label}"):
+                    with st.form(f"edit_announcement_{notice_id}"):
+                        edit_title = st.text_input("公告標題", value=notice.get("title") or "", key=f"notice_title_{notice_id}")
+                        edit_category = st.selectbox("公告類型", announcement_categories, index=announcement_categories.index(notice.get("category")) if notice.get("category") in announcement_categories else 0, key=f"notice_category_{notice_id}")
+                        edit_content = st.text_area("公告內容", value=notice.get("content") or "", height=140, key=f"notice_content_{notice_id}")
+                        edit_status = st.selectbox("公告狀態", ["draft", "published", "archived"], index=["draft", "published", "archived"].index(notice.get("status") or "draft"), format_func=lambda x: {"draft":"草稿", "published":"發布／排程", "archived":"下架"}[x], key=f"notice_status_{notice_id}")
+                        edit_pin = st.checkbox("📌 置頂公告", value=bool(notice.get("is_pinned")), key=f"notice_pin_{notice_id}")
+                        old_publish = datetime.fromisoformat(notice["publish_at"].replace("Z", "+00:00")).astimezone(taipei_tz)
+                        edit_publish_date = st.date_input("發布日期", value=old_publish.date(), key=f"notice_date_{notice_id}")
+                        edit_publish_time = st.time_input("發布時間", value=old_publish.time().replace(tzinfo=None, second=0, microsecond=0), key=f"notice_time_{notice_id}")
+                        old_expiry = notice.get("expires_at")
+                        expiry_default = datetime.fromisoformat(old_expiry.replace("Z", "+00:00")).astimezone(taipei_tz).date() if old_expiry else now_taipei.date()
+                        edit_expiry_enabled = st.checkbox("設定下架日期", value=bool(old_expiry), key=f"notice_expiry_enabled_{notice_id}")
+                        edit_expiry_date = st.date_input("下架日期", value=expiry_default, disabled=not edit_expiry_enabled, key=f"notice_expiry_{notice_id}")
+                        save_notice = st.form_submit_button("儲存公告修改")
+                    if save_notice:
+                        if not edit_title.strip() or not edit_content.strip():
+                            st.error("公告標題和內容都不能空白。")
+                        else:
+                            publish_dt = datetime.combine(edit_publish_date, edit_publish_time).replace(tzinfo=taipei_tz)
+                            expiry_dt = datetime.combine(edit_expiry_date, datetime.max.time()).replace(tzinfo=taipei_tz) if edit_expiry_enabled else None
+                            if expiry_dt and expiry_dt <= publish_dt:
+                                st.error("下架日期必須晚於發布時間。")
+                            else:
+                                try:
+                                    admin.table("announcements").update({
+                                        "title": edit_title.strip(),
+                                        "content": edit_content.strip(),
+                                        "category": edit_category,
+                                        "status": edit_status,
+                                        "is_pinned": edit_pin,
+                                        "publish_at": publish_dt.astimezone(timezone.utc).isoformat(),
+                                        "expires_at": expiry_dt.astimezone(timezone.utc).isoformat() if expiry_dt else None,
+                                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                                    }).eq("id", notice_id).execute()
+                                    st.success("公告已更新。")
+                                    st.rerun()
+                                except Exception:
+                                    st.error("公告更新失敗，請稍後再試。")
+                    delete_confirm = st.checkbox("我確認永久刪除此公告", key=f"notice_delete_confirm_{notice_id}")
+                    if st.button("🗑️ 永久刪除公告", disabled=not delete_confirm, key=f"delete_notice_{notice_id}"):
+                        try:
+                            admin.table("announcements").delete().eq("id", notice_id).execute()
+                            st.success("公告已刪除。")
+                            st.rerun()
+                        except Exception:
+                            st.error("公告刪除失敗，請稍後再試。")
+        except Exception:
+            st.error("公告清單讀取失敗，請確認 announcements 資料表已建立。")
+        st.divider()
+        st.subheader("📷 拍攝小組資訊管理")
         signup_rows_for_link = (
             admin.table("group_signups")
             .select("assigned_group")
