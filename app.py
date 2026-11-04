@@ -698,7 +698,6 @@ elif role == "admin":
         signup_rows_for_link = (
             admin.table("group_signups")
             .select("assigned_group")
-            .not_.is_("assigned_group", "null")
             .execute().data
         )
         linkable_group_numbers = sorted({
