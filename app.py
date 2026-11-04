@@ -317,10 +317,11 @@ if st.button("登出"):
     logout()
 
 if role == "student":
-    upload_tab, mine_tab, class_tab, group_tab, personal_tab = st.tabs([
+    upload_tab, mine_tab, class_tab, announcement_tab, group_tab, personal_tab = st.tabs([
         "📤 個人生活照繳交",
         "🖼️ 我的照片",
         "📸 班級團體照",
+        "📢 最新公告",
         "👥 分組登記&名單",
         "📝 個人生活照須知",
     ])
@@ -374,15 +375,19 @@ if role == "student":
         st.markdown("**指定動作：**")
         st.markdown("1. YA 手勢\n2. 小愛心\n3. 戳臉")
         st.warning("請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。")
-    with group_tab:
+    with announcement_tab:
+        st.subheader("📢 最新公告")
         try:
             groups = get_groups()
-            for group in groups:
-                with st.container(border=True):
-                    show_group(group)
+            if groups:
+                for group in groups:
+                    with st.container(border=True):
+                        show_group(group)
+            else:
+                st.info("目前沒有新的公告。")
         except Exception:
-            st.error("拍攝資訊讀取失敗，請聯絡畢冊製作組。")
-        st.divider()
+            st.error("公告讀取失敗，請稍後再試。")
+    with group_tab:
         st.subheader("學生自行組隊")
         st.write(f"組長：**{identity['seat_no']} 號｜{identity['name']}**")
         st.caption("由組長建立小組，輸入其他組員的座號即可。系統會自動帶入正確姓名，並將整組名單一次送出。")
