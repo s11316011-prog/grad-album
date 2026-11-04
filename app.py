@@ -1,6 +1,9 @@
 import streamlit as st
 import uuid
 import hmac
+import base64
+import hashlib
+import secrets
 from importlib.metadata import version
 from datetime import datetime, timezone
 from supabase import create_client, Client
@@ -16,8 +19,8 @@ st.set_page_config(
 SUPABASE_URL = st.secrets["SUPABASE_URL"].strip().rstrip("/")
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 SUPABASE_SECRET_KEY = st.secrets["SUPABASE_SECRET_KEY"]
-# 管理員 1 沿用既有 Secrets；管理員 2～5 使用各自獨立的 Secrets。
-ADMIN_ACCOUNTS = []
+# 舊管理員 Secrets 僅用於第一次啟動時遷移至 Supabase，完成後可從 ST Secrets 移除。
+BOOTSTRAP_ADMIN_ACCOUNTS = []
 for admin_no in range(1, 6):
     username_key = f"ADMIN_USERNAME_{admin_no}"
     password_key = f"ADMIN_PASSWORD_{admin_no}"
@@ -28,9 +31,7 @@ for admin_no in range(1, 6):
         username = st.secrets.get(username_key, "")
         password = st.secrets.get(password_key, "")
     if username and password:
-        ADMIN_ACCOUNTS.append({"username": str(username), "password": str(password)})
-TEACHER_USERNAME = str(st.secrets.get("TEACHER_USERNAME", "")).strip()
-TEACHER_PASSWORD = str(st.secrets.get("TEACHER_PASSWORD", ""))
+        BOOTSTRAP_ADMIN_ACCOUNTS.append({"username": str(username).strip(), "password": str(password)})
 BUCKET = "photos"
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
@@ -71,6 +72,61 @@ def verify_student(seat_no: str, password: str):
         {"input_seat_no": seat_no.strip(), "input_password": password},
     ).execute()
     return result.data[0] if result.data else None
+
+PASSWORD_ITERATIONS = 600_000
+
+def hash_staff_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
+    salt_text = base64.urlsafe_b64encode(salt).decode("ascii")
+    digest_text = base64.urlsafe_b64encode(digest).decode("ascii")
+    return f"pbkdf2_sha256${PASSWORD_ITERATIONS}${salt_text}${digest_text}"
+
+def verify_staff_password(password: str, stored_hash: str) -> bool:
+    try:
+        algorithm, rounds, salt_text, digest_text = stored_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        salt = base64.urlsafe_b64decode(salt_text.encode("ascii"))
+        expected = base64.urlsafe_b64decode(digest_text.encode("ascii"))
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(rounds))
+        return hmac.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
+def verify_staff_account(username: str, password: str, expected_role: str):
+    rows = (
+        admin.table("staff_accounts")
+        .select("username, role, password_hash, is_active")
+        .eq("username", username.strip())
+        .eq("role", expected_role)
+        .limit(1)
+        .execute().data
+    )
+    if not rows or not rows[0].get("is_active"):
+        return None
+    row = rows[0]
+    if verify_staff_password(password, row["password_hash"]):
+        return {"username": row["username"], "role": row["role"]}
+    return None
+
+def bootstrap_staff_accounts():
+    existing = admin.table("staff_accounts").select("id").limit(1).execute().data
+    if existing:
+        return
+    for account in BOOTSTRAP_ADMIN_ACCOUNTS:
+        admin.table("staff_accounts").insert({
+            "username": account["username"],
+            "role": "admin",
+            "password_hash": hash_staff_password(account["password"]),
+            "is_active": True,
+        }).execute()
+
+try:
+    bootstrap_staff_accounts()
+except Exception:
+    st.error("管理員帳號資料庫初始化失敗，請確認 Supabase staff_accounts 資料表及 Data API 權限。")
+    st.stop()
 
 def set_session(role, identity=None):
     st.session_state["role"] = role
@@ -215,29 +271,29 @@ if role is None:
         teacher_username = st.text_input("教師帳號", key="teacher_user")
         teacher_password = st.text_input("教師密碼", type="password", key="teacher_pwd")
         if st.button("登入教師查詢", type="primary", use_container_width=True):
-            if (TEACHER_USERNAME and TEACHER_PASSWORD
-                    and hmac.compare_digest(teacher_username, TEACHER_USERNAME)
-                    and hmac.compare_digest(teacher_password, TEACHER_PASSWORD)):
-                set_session("teacher", {"username": TEACHER_USERNAME})
-                st.rerun()
-            else:
-                st.error("教師帳號或密碼錯誤，或尚未設定教師登入資料。")
+            try:
+                matched = verify_staff_account(teacher_username, teacher_password, "teacher")
+                if matched:
+                    set_session("teacher", {"username": matched["username"]})
+                    st.rerun()
+                else:
+                    st.error("教師帳號或密碼錯誤，或帳號已停用。")
+            except Exception:
+                st.error("教師登入驗證暫時無法使用，請稍後再試。")
     with admin_tab:
         st.subheader("畢冊製作組管理專區")
         username = st.text_input("管理帳號", key="admin_user")
         password = st.text_input("管理密碼", type="password", key="admin_pwd")
         if st.button("登入管理專區", type="primary", use_container_width=True):
-            matched = next(
-                (account for account in ADMIN_ACCOUNTS
-                 if hmac.compare_digest(username, account["username"])
-                 and hmac.compare_digest(password, account["password"])),
-                None,
-            )
-            if matched:
-                set_session("admin", {"username": matched["username"]})
-                st.rerun()
-            else:
-                st.error("管理帳號或密碼錯誤。")
+            try:
+                matched = verify_staff_account(username, password, "admin")
+                if matched:
+                    set_session("admin", {"username": matched["username"]})
+                    st.rerun()
+                else:
+                    st.error("管理帳號或密碼錯誤，或帳號已停用。")
+            except Exception:
+                st.error("管理員登入驗證暫時無法使用，請稍後再試。")
     st.stop()
 
 identity = st.session_state.get("identity") or {}
@@ -424,7 +480,7 @@ elif role == "teacher":
             st.error("小組名單讀取失敗，請稍後再試。")
 
 elif role == "admin":
-    signup_tab, group_tab, photo_tab = st.tabs(["🧾 小組登記與分組", "📍 拍攝小組管理", "🗂️ 全班照片管理"])
+    signup_tab, group_tab, photo_tab, staff_tab = st.tabs(["🧾 小組登記與分組", "📍 拍攝小組管理", "🗂️ 全班照片管理", "🔐 帳號管理"])
     with signup_tab:
         st.subheader("學生小組登記名單")
         st.caption("依系統登記先後排序；管理員可依實際分組狀況調整，不限制每組人數。")
@@ -552,3 +608,80 @@ elif role == "admin":
                     st.rerun()
         except Exception:
             st.error("照片清單讀取失敗，請確認 Storage bucket 名稱及權限。")
+
+    with staff_tab:
+        st.subheader("教師及管理員帳號管理")
+        st.caption("帳號資料存放於 Supabase；密碼只保存 PBKDF2 雜湊值，不保存明文。")
+        with st.form("create_staff_account", clear_on_submit=True):
+            new_username = st.text_input("新帳號")
+            new_role_label = st.selectbox("身分", ["教師", "畢冊製作組管理員"])
+            new_password = st.text_input("設定密碼（至少 12 個字元）", type="password")
+            confirm_password = st.text_input("再次輸入密碼", type="password")
+            create_staff = st.form_submit_button("新增帳號")
+        if create_staff:
+            if not new_username.strip():
+                st.warning("請輸入帳號。")
+            elif len(new_password) < 12:
+                st.warning("密碼至少需要 12 個字元。")
+            elif new_password != confirm_password:
+                st.warning("兩次輸入的密碼不一致。")
+            else:
+                try:
+                    duplicate = (
+                        admin.table("staff_accounts")
+                        .select("id")
+                        .ilike("username", new_username.strip())
+                        .limit(1).execute().data
+                    )
+                    if duplicate:
+                        st.error("這個帳號已經存在，請換一個帳號。")
+                    else:
+                        admin.table("staff_accounts").insert({
+                            "username": new_username.strip(),
+                            "role": "teacher" if new_role_label == "教師" else "admin",
+                            "password_hash": hash_staff_password(new_password),
+                            "is_active": True,
+                        }).execute()
+                        st.success("帳號已安全寫入 Supabase。")
+                        st.rerun()
+                except Exception:
+                    st.error("新增帳號失敗，請稍後再試。")
+        st.divider()
+        st.subheader("現有帳號")
+        try:
+            staff_rows = (
+                admin.table("staff_accounts")
+                .select("id, username, role, is_active, created_at")
+                .order("role")
+                .order("username")
+                .execute().data
+            )
+            if not staff_rows:
+                st.info("目前沒有管理員或教師帳號。")
+            for staff in staff_rows:
+                staff_id = staff["id"]
+                role_label = "教師" if staff["role"] == "teacher" else "管理員"
+                with st.expander(f"{role_label}｜{staff['username']}｜{'啟用中' if staff['is_active'] else '已停用'}"):
+                    with st.form(f"edit_staff_{staff_id}"):
+                        active_value = st.checkbox("啟用此帳號", value=staff["is_active"])
+                        reset_password = st.text_input("更換密碼（留空代表不更換）", type="password")
+                        save_staff = st.form_submit_button("儲存帳號設定")
+                    if save_staff:
+                        try:
+                            if staff["role"] == "admin" and staff["is_active"] and not active_value:
+                                active_admins = sum(1 for item in staff_rows if item["role"] == "admin" and item["is_active"])
+                                if active_admins <= 1:
+                                    st.error("至少必須保留一位啟用中的管理員。")
+                                    st.stop()
+                            updates = {"is_active": active_value, "updated_at": datetime.now(timezone.utc).isoformat()}
+                            if reset_password:
+                                if len(reset_password) < 12:
+                                    st.error("新密碼至少需要 12 個字元。")
+                                    st.stop()
+                                updates["password_hash"] = hash_staff_password(reset_password)
+                            admin.table("staff_accounts").update(updates).eq("id", staff_id).execute()
+                            st.success("帳號設定已更新。")
+                            st.rerun()
+                        except Exception:
+                            st.error("帳號更新失敗，請稍後再試。")
+
