@@ -375,12 +375,8 @@ if role == "student":
         st.markdown("1. YA 手勢\n2. 小愛心\n3. 戳臉")
         st.warning("請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。")
     with group_tab:
-        st.subheader("📢 分組公告")
-        st.caption("各組拍攝地點、集合時間、注意事項及組員名單會直接顯示在這裡，不需要另外開啟公告頁面。")
         try:
             groups = get_groups()
-            if not groups:
-                st.info("目前尚未公布小組拍攝資訊。")
             for group in groups:
                 with st.container(border=True):
                     show_group(group)
