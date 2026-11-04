@@ -274,7 +274,7 @@ if role is None:
             try:
                 matched = verify_staff_account(teacher_username, teacher_password, "teacher")
                 if matched:
-                    set_session("teacher", {"username": matched["username"]})
+                    set_session("admin", {"username": matched["username"], "staff_role": "teacher"})
                     st.rerun()
                 else:
                     st.error("教師帳號或密碼錯誤，或帳號已停用。")
@@ -288,7 +288,7 @@ if role is None:
             try:
                 matched = verify_staff_account(username, password, "admin")
                 if matched:
-                    set_session("admin", {"username": matched["username"]})
+                    set_session("admin", {"username": matched["username"], "staff_role": "admin"})
                     st.rerun()
                 else:
                     st.error("管理帳號或密碼錯誤，或帳號已停用。")
@@ -301,9 +301,14 @@ st.caption("登入有效時間：30 分鐘")
 if role == "student":
     st.success(f"學生登入成功：{identity['seat_no']} 號｜{identity['name']}")
 elif role == "teacher":
-    st.success("教師登入成功｜僅可查詢全班照片及小組分組名單")
+    st.success("教師登入成功｜最高管理權限")
 elif role == "admin":
-    st.success("畢冊製作組管理員登入成功")
+    if identity.get("staff_role") == "teacher":
+        st.success("教師登入成功｜最高管理權限")
+    elif identity.get("username", "").lower() == "zhang":
+        st.success("最高管理員登入成功")
+    else:
+        st.success("畢冊製作組管理員登入成功")
 if st.button("登出"):
     logout()
 
