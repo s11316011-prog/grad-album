@@ -219,7 +219,7 @@ if st.button("登出"):
     logout()
 
 if role == "student":
-    up_tab, mine_tab, info_tab = st.tabs(["📤 上傳照片", "🖼️ 我的照片", "📍 拍攝小組資訊"])
+    up_tab, mine_tab, info_tab = st.tabs(["📤 上傳照片", "🖼️ 我的照片", "📍 小組拍攝資訊"])
     with up_tab:
         st.subheader("上傳個人照片")
         files = st.file_uploader(
@@ -260,11 +260,11 @@ if role == "student":
         except Exception:
             st.error("照片讀取失敗，請稍後再試。")
     with info_tab:
-        st.subheader("拍攝小組資訊")
+        st.subheader("小組拍攝資訊")
         try:
             groups = get_groups()
             if not groups:
-                st.info("目前尚未公布拍攝小組資訊。")
+                st.info("目前尚未公布小組拍攝資訊。")
             for group in groups:
                 with st.container(border=True):
                     show_group(group)
