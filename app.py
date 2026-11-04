@@ -684,4 +684,6 @@ elif role == "admin":
                             st.rerun()
                         except Exception:
                             st.error("帳號更新失敗，請稍後再試。")
+        except Exception:
+            st.error("無法讀取帳號清單，請稍後再試。")
 
