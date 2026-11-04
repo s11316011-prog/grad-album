@@ -1,6 +1,7 @@
 import streamlit as st
 import uuid
 import hmac
+from importlib.metadata import version
 from datetime import datetime, timezone
 from supabase import create_client, Client
 
@@ -12,7 +13,7 @@ st.set_page_config(
 )
 
 # Secrets are stored only in Streamlit Cloud/local .streamlit/secrets.toml.
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_URL = st.secrets["SUPABASE_URL"].strip().rstrip("/")
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 SUPABASE_SECRET_KEY = st.secrets["SUPABASE_SECRET_KEY"]
 ADMIN_USERNAME = st.secrets["ADMIN_USERNAME"]
@@ -187,6 +188,13 @@ if role is None:
                         st.error("診斷結果：一般資料表 API 也無法連線。")
                         st.code(f"資料表 API：{type(api_error).__name__}: {api_error}")
                     st.caption("此診斷只讀取一筆資料的 id，不會顯示或修改學生個資、密碼或照片。")
+                    st.markdown("**連線設定診斷（不含任何金鑰）**")
+                    st.code(
+                        f"SUPABASE_URL = {SUPABASE_URL!r}\\n"
+                        f"REST endpoint = {getattr(admin, 'rest_url', 'SDK 未提供 rest_url 屬性')!r}\\n"
+                        f"supabase package = {version('supabase')}\\n"
+                        f"postgrest package = {version('postgrest')}"
+                    )
     with admin_tab:
         st.subheader("畢冊製作組管理專區")
         username = st.text_input("管理帳號", key="admin_user")
