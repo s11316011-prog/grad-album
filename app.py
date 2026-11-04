@@ -571,44 +571,52 @@ elif role == "admin":
             group_choices = sorted(grouped.keys())
             next_group_number = max(group_choices, default=0) + 1
             from streamlit_sortables import sort_items
-            board_labels = [f"第 {number} 組" for number in group_choices]
-            board_labels += ["尚未組隊", f"新增第 {next_group_number} 組"]
             student_lookup = {
                 f"{student.get('seat_no')} 號｜{student.get('name')}": student
                 for student in students
             }
             board_items = [
-                [
-                    f"{row.get('seat_no')} 號｜{row.get('student_name')}"
-                    for row in grouped.get(number, [])
-                ]
+                {
+                    "header": f"第 {number} 組",
+                    "items": [
+                        f"{row.get('seat_no')} 號｜{row.get('student_name')}"
+                        for row in grouped.get(number, [])
+                    ],
+                }
                 for number in group_choices
             ]
             board_items += [
-                [f"{student.get('seat_no')} 號｜{student.get('name')}" for student in ungrouped],
-                [],
+                {
+                    "header": "尚未組隊",
+                    "items": [f"{student.get('seat_no')} 號｜{student.get('name')}" for student in ungrouped],
+                },
+                {"header": f"新增第 {next_group_number} 組", "items": []},
             ]
             sorted_boards = sort_items(
                 board_items,
                 multi_containers=True,
-                direction="vertical",
-                container_labels=board_labels,
                 key="admin_drag_group_board",
             )
             st.caption("拖曳完成後，請檢查每個區塊的名單，再儲存。")
             if st.button("儲存拖曳結果", type="primary", key="admin_save_drag_group_board"):
                 try:
                     target_groups = {}
-                    for index, board in enumerate(sorted_boards):
-                        if index < len(group_choices):
-                            target_group = group_choices[index]
-                        elif index == len(group_choices):
+                    for board in sorted_boards:
+                        header = board.get("header", "")
+                        if header == "尚未組隊":
                             target_group = None
-                        else:
+                        elif header == f"新增第 {next_group_number} 組":
                             target_group = next_group_number
-                        for label in board:
+                        else:
+                            try:
+                                target_group = int(header.replace("第 ", "").replace(" 組", ""))
+                            except ValueError:
+                                raise ValueError("看板組別標題無法辨識")
+                        for label in board.get("items", []):
                             student = student_lookup.get(label)
                             if student:
+                                if student["id"] in target_groups:
+                                    raise ValueError("同一位學生出現在多個看板區塊")
                                 target_groups[student["id"]] = target_group
                     if len(target_groups) != len(students):
                         st.error("看板名單不完整，為避免遺漏學生，沒有儲存任何變更。")
