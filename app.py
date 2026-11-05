@@ -656,19 +656,19 @@ if role == "student":
                 for index, group_no in enumerate(group_numbers):
                     with group_columns[index % len(group_columns)]:
                         with st.container(border=True):
-                            st.markdown(f"**第 {group_no} 組**")
+                            st.markdown(student_content["roster_group_title"].format(group_no=group_no))
                             member_ids = set(roster_groups[group_no])
                             group_members = [student for student in roster_students if student.get("id") in member_ids]
                             for member in group_members:
-                                leader_prefix = "組長｜" if member.get("id") == roster_leaders.get(group_no) else ""
-                                st.write(f"{member.get('seat_no')} 號｜{leader_prefix}{member.get('name')}")
+                                leader_prefix = student_content["roster_leader_prefix"] if member.get("id") == roster_leaders.get(group_no) else ""
+                                st.write(student_content["roster_member_format"].format(seat_no=member.get("seat_no"), leader_prefix=leader_prefix, name=member.get("name")))
             else:
                 st.info(student_content["roster_empty"])
             roster_unassigned = [student for student in roster_students if student.get("id") not in roster_assigned_ids]
             if roster_unassigned:
-                with st.expander(f"尚未分組（{len(roster_unassigned)} 位）"):
+                with st.expander(student_content["roster_unassigned_label"].format(count=len(roster_unassigned))):
                     for student in roster_unassigned:
-                        st.write(f"{student.get('seat_no')} 號｜{student.get('name')}")
+                        st.write(student_content["roster_unassigned_member_format"].format(seat_no=student.get("seat_no"), name=student.get("name")))
         except Exception:
             st.warning(student_content["roster_load_error"])
     
@@ -704,7 +704,7 @@ if role == "student":
                     for file in files:
                         data, mime, error = image_info(file)
                         if error:
-                            st.error(f"{file.name}：{error}")
+                            st.error(student_content["upload_file_error"].format(filename=file.name, error=error))
                             continue
                         ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
                         path = f"{identity['seat_no']}/{uuid.uuid4().hex}.{ext}"
@@ -712,9 +712,9 @@ if role == "student":
                             upload_photo(path, data, mime)
                             count += 1
                         except Exception:
-                            st.error(f"{file.name} 上傳失敗，請稍後再試。")
+                            st.error(student_content["upload_fail"].format(filename=file.name))
                     if count:
-                        st.success(f"成功上傳 {count} 張照片。")
+                        st.success(student_content["upload_success"].format(count=count))
     if "show_my_photos" in student_tab_map:
         with student_tab_map["show_my_photos"]:
             st.subheader(student_content["my_photos_title"])
