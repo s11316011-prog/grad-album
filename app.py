@@ -185,6 +185,24 @@ def verify_staff_account(username: str, password: str, expected_role):
         return {"username": row["username"], "role": row["role"]}
     return None
 
+def change_staff_password(username: str, old_password: str, new_password: str):
+    rows = (
+        admin.table("staff_accounts")
+        .select("id, password_hash, is_active")
+        .eq("username", username.strip())
+        .limit(1)
+        .execute().data
+    )
+    if not rows or not rows[0].get("is_active"):
+        return False
+    row = rows[0]
+    if not verify_staff_password(old_password, row["password_hash"]):
+        return False
+    admin.table("staff_accounts").update({
+        "password_hash": hash_staff_password(new_password)
+    }).eq("id", row["id"]).execute()
+    return True
+
 def bootstrap_staff_accounts():
     existing = admin.table("staff_accounts").select("id").limit(1).execute().data
     if existing:
@@ -358,6 +376,32 @@ if role is None:
                         f"supabase package = {version('supabase')}\\n"
                         f"postgrest package = {version('postgrest')}"
                     )
+        with st.expander("🔐 更改學生密碼"):
+            st.caption("請輸入座號及目前密碼驗證身分；新密碼至少 8 個字元。")
+            change_seat = st.text_input("學生座號", key="student_change_seat")
+            old_student_pwd = st.text_input("目前密碼", type="password", key="student_old_pwd")
+            new_student_pwd = st.text_input("新密碼（至少 8 個字元）", type="password", key="student_new_pwd")
+            confirm_student_pwd = st.text_input("再次輸入新密碼", type="password", key="student_confirm_pwd")
+            if st.button("確認更改學生密碼", key="student_change_pwd_button", use_container_width=True):
+                if not all([change_seat.strip(), old_student_pwd, new_student_pwd, confirm_student_pwd]):
+                    st.warning("請完整填寫所有欄位。")
+                elif len(new_student_pwd) < 8 or len(new_student_pwd) > 128:
+                    st.warning("新密碼長度需為 8～128 個字元。")
+                elif new_student_pwd != confirm_student_pwd:
+                    st.error("兩次輸入的新密碼不一致。")
+                else:
+                    try:
+                        changed = admin.rpc("change_student_password", {
+                            "input_seat_no": change_seat.strip(),
+                            "input_old_password": old_student_pwd,
+                            "input_new_password": new_student_pwd,
+                        }).execute().data
+                        if changed is True:
+                            st.success("學生密碼已更新，請使用新密碼登入。")
+                        else:
+                            st.error("座號或目前密碼錯誤，密碼未變更。")
+                    except Exception:
+                        st.error("目前無法更改密碼，請稍後再試。")
     with admin_tab:
         st.subheader("管理員登入")
         username = st.text_input("管理員帳號", key="admin_user")
@@ -375,6 +419,28 @@ if role is None:
                     st.error("管理員帳號或密碼錯誤，或帳號已停用。")
             except Exception:
                 st.error("管理員登入驗證暫時無法使用，請稍後再試。")
+        with st.expander("🔐 更改管理員密碼"):
+            st.caption("請使用自己的管理員帳號及目前密碼驗證身分。")
+            change_username = st.text_input("管理員帳號", key="staff_change_username")
+            old_staff_pwd = st.text_input("目前密碼", type="password", key="staff_old_pwd")
+            new_staff_pwd = st.text_input("新密碼（至少 8 個字元）", type="password", key="staff_new_pwd")
+            confirm_staff_pwd = st.text_input("再次輸入新密碼", type="password", key="staff_confirm_pwd")
+            if st.button("確認更改管理員密碼", key="staff_change_pwd_button", use_container_width=True):
+                if not all([change_username.strip(), old_staff_pwd, new_staff_pwd, confirm_staff_pwd]):
+                    st.warning("請完整填寫所有欄位。")
+                elif len(new_staff_pwd) < 8 or len(new_staff_pwd) > 128:
+                    st.warning("新密碼長度需為 8～128 個字元。")
+                elif new_staff_pwd != confirm_staff_pwd:
+                    st.error("兩次輸入的新密碼不一致。")
+                else:
+                    try:
+                        changed = change_staff_password(change_username, old_staff_pwd, new_staff_pwd)
+                        if changed:
+                            st.success("管理員密碼已更新，請使用新密碼登入。")
+                        else:
+                            st.error("管理員帳號或目前密碼錯誤，或帳號已停用；密碼未變更。")
+                    except Exception:
+                        st.error("目前無法更改密碼，請稍後再試。")
     st.stop()
 
 identity = st.session_state.get("identity") or {}
