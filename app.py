@@ -860,13 +860,7 @@ if role == "student":
         with student_tab_map["show_personal_photo_rules"]:
             st.subheader("個人生活照繳交規範")
             st.warning(student_content["personal_rules_deadline"])
-            st.markdown(
-                "1. 每位同學都必須繳交個人生活照。\n"
-                "2. 不可用任何方式遮蓋五官。\n"
-                "3. 請採用七分身拍攝方式。\n"
-                "4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\n"
-                "5. 請於 11 月 13 日前至指定網址繳交。"
-            )
+            st.markdown(student_content["personal_rules_list"])
             st.info(student_content["personal_rules_extra"])
             st.caption(student_content["personal_rules_contact"])
 
@@ -1414,6 +1408,7 @@ elif role == "admin":
                 "class_photo_notice": "請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。",
                 "group_notice": "小組拍攝注意事項\\n\\n（1）需要 4 張\\n\\n（2）動作需自行決定",
                 "personal_rules_deadline": "每位同學都必須繳交，截止日期為 11 月 13 日。",
+                "personal_rules_list": "1. 每位同學都必須繳交個人生活照。\\n2. 不可用任何方式遮蓋五官。\\n3. 請採用七分身拍攝方式。\\n4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\\n5. 請於 11 月 13 日前至指定網址繳交。",
                 "personal_rules_extra": "七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。",
                 "personal_rules_contact": "如有任何問題，請直接提出，或私下向相關負責人反映。",
             }
@@ -1434,6 +1429,7 @@ elif role == "admin":
                 st.markdown("#### 📝 個人生活照須知")
                 for key, label in [
                     ("personal_rules_deadline", "截止日期提醒"),
+                    ("personal_rules_list", "生活照注意事項（可自行編輯編號及換行）"),
                     ("personal_rules_extra", "補充說明"), ("personal_rules_contact", "聯絡方式／問題反映文字"),
                 ]:
                     edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=100)
