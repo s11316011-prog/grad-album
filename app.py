@@ -494,11 +494,11 @@ if st.session_state.get("show_change_password_form", False):
             confirm_pwd = st.text_input(student_ui_text("password_confirm_label", "再次輸入新密碼"), type="password", key="logged_student_confirm_pwd")
             if st.button(student_ui_text("password_submit_button", "確認更改密碼"), type="primary", key="logged_student_change_pwd"):
                 if not all([old_pwd, new_pwd, confirm_pwd]):
-                    st.warning("請完整填寫所有欄位。")
+                    st.warning(student_ui_text("password_fill_warning", "請完整填寫所有欄位。"))
                 elif not 8 <= len(new_pwd) <= 128:
-                    st.warning("新密碼長度需為 8～128 個字元。")
+                    st.warning(student_ui_text("password_length_warning", "新密碼長度需為 8～128 個字元。"))
                 elif new_pwd != confirm_pwd:
-                    st.error("兩次輸入的新密碼不一致。")
+                    st.error(student_ui_text("password_mismatch_error", "兩次輸入的新密碼不一致。"))
                 else:
                     try:
                         changed = admin.rpc("change_student_password", {
@@ -512,7 +512,7 @@ if st.session_state.get("show_change_password_form", False):
                         else:
                             st.error(student_ui_text("password_wrong_error", "目前密碼錯誤，密碼未變更。"))
                     except Exception:
-                        st.error("目前無法更改密碼，請稍後再試。")
+                        st.error(student_ui_text("password_general_error", "目前無法更改密碼，請稍後再試。"))
         else:
             st.caption("正在修改目前登入的管理員帳號密碼。")
             old_pwd = st.text_input("目前密碼", type="password", key="logged_staff_old_pwd")
