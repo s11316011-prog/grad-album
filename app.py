@@ -469,9 +469,15 @@ with logout_col:
         logout()
 
 if role == "student":
-    st.subheader("👥 全班分組一覽")
-    st.caption("所有同學都可以查看目前各組名單；組長會特別標示。")
     try:
+        roster_setting_rows = admin.table("site_settings").select("setting_value").eq("setting_key", "show_class_group_roster").limit(1).execute().data
+        show_class_group_roster = bool(roster_setting_rows and roster_setting_rows[0].get("setting_value") is True)
+    except Exception:
+        show_class_group_roster = True
+    if show_class_group_roster:
+        st.subheader("👥 全班分組一覽")
+        st.caption("所有同學都可以查看目前各組名單；組長會特別標示。")
+        try:
         roster_students = (
             admin.table("grad_album")
             .select("id, seat_no, name")
@@ -847,12 +853,12 @@ elif role == "teacher":
 
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理", "👤 人員資料管理"]
+    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理", "👤 人員資料管理", "⚙️ 顯示設定"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
-    group_tab, signup_tab, photo_tab, personnel_tab = created_tabs[:4]
-    staff_tab = created_tabs[4] if is_full_admin else None
+    group_tab, signup_tab, photo_tab, personnel_tab, display_settings_tab = created_tabs[:5]
+    staff_tab = created_tabs[5] if is_full_admin else None
     with signup_tab:
         st.subheader("學生自行組隊結果")
         st.caption("學生由組長建立小組並一次送出；每位學生只能屬於一組。管理員可查看各組名單及尚未組隊的學生。")
@@ -1276,6 +1282,26 @@ elif role == "admin":
                     st.rerun()
         except Exception:
             st.error("照片清單讀取失敗，請確認 Storage bucket 名稱及權限。")
+
+    with display_settings_tab:
+        st.subheader("⚙️ 頁面顯示設定")
+        st.caption("控制學生登入後，是否在頁面上方顯示全班分組名單。")
+        try:
+            setting_rows = admin.table("site_settings").select("setting_value").eq("setting_key", "show_class_group_roster").limit(1).execute().data
+            current_show_roster = bool(setting_rows and setting_rows[0].get("setting_value") is True)
+            with st.form("class_group_roster_visibility_setting"):
+                new_show_roster = st.toggle("顯示全班分組一覽", value=current_show_roster, help="關閉後，學生頁面上方不會顯示全班分組名單；分組登記及管理功能不受影響。")
+                save_roster_setting = st.form_submit_button("儲存顯示設定")
+            if save_roster_setting:
+                admin.table("site_settings").upsert({
+                    "setting_key": "show_class_group_roster",
+                    "setting_value": new_show_roster,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }, on_conflict="setting_key").execute()
+                st.success("全班分組一覽顯示設定已更新。")
+                st.rerun()
+        except Exception:
+            st.error("讀取或儲存顯示設定失敗，請確認 site_settings 資料表。")
 
     with personnel_tab:
         st.subheader("👤 人員資料管理")
