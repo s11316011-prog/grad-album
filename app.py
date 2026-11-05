@@ -538,6 +538,7 @@ if role == "student":
         "class_photo_notice": "請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。",
         "group_notice": "小組拍攝注意事項\n\n（1）需要 4 張\n\n（2）動作需自行決定",
         "personal_rules_deadline": "每位同學都必須繳交，截止日期為 11 月 13 日。",
+        "personal_rules_list": "1. 每位同學都必須繳交個人生活照。\\n2. 不可用任何方式遮蓋五官。\\n3. 請採用七分身拍攝方式。\\n4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\\n5. 請於 11 月 13 日前至指定網址繳交。",
         "personal_rules_extra": "七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。",
         "personal_rules_contact": "如有任何問題，請直接提出，或私下向相關負責人反映。",
     }
@@ -1404,9 +1405,9 @@ elif role == "admin":
             content_defaults = {
                 "class_photo_date": "11 月 6 日（星期五）", "class_photo_time": "上午 08:20",
                 "class_photo_location": "健康中心旁的小石桌", "class_photo_clothing": "請穿著制服",
-                "class_photo_count": "3 張", "class_photo_actions": "1. YA 手勢\\n2. 小愛心\\n3. 戳臉",
+                "class_photo_count": "3 張", "class_photo_actions": "1. YA 手勢\n2. 小愛心\n3. 戳臉",
                 "class_photo_notice": "請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。",
-                "group_notice": "小組拍攝注意事項\\n\\n（1）需要 4 張\\n\\n（2）動作需自行決定",
+                "group_notice": "小組拍攝注意事項\n\n（1）需要 4 張\n\n（2）動作需自行決定",
                 "personal_rules_deadline": "每位同學都必須繳交，截止日期為 11 月 13 日。",
                 "personal_rules_list": "1. 每位同學都必須繳交個人生活照。\\n2. 不可用任何方式遮蓋五官。\\n3. 請採用七分身拍攝方式。\\n4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\\n5. 請於 11 月 13 日前至指定網址繳交。",
                 "personal_rules_extra": "七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。",
