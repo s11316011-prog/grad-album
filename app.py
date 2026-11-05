@@ -915,19 +915,27 @@ elif role == "admin":
                     st.info("請將上方錯誤內容回報，以便精確修復；不需要提供任何密碼或金鑰。")
 
             from streamlit_sortables import sort_items
-            student_lookup = {
-                f"{student.get('seat_no')} 號｜{student.get('name')}": student
+            # 看板統一使用 grad_album 主資料的座號與姓名，避免舊 group_signups
+            # 中的姓名文字與主資料不同，造成拖曳後無法對應到學生。
+            student_label_by_id = {
+                student["id"]: f"{student.get('seat_no')} 號｜{student.get('name')}"
                 for student in students
+            }
+            student_lookup = {
+                label: student
+                for student in students
+                for label in [student_label_by_id[student["id"]]]
             }
             group_boards = [
                 {
                     "header": f"第 {group_no} 組",
                     "items": [
-                        f"{row.get('seat_no')} 號｜{row.get('student_name')}"
+                        student_label_by_id[row["student_id"]]
                         for row in sorted(
                             grouped.get(group_no, []),
                             key=lambda item: str(item.get("seat_no", ""))
                         )
+                        if row.get("student_id") in student_label_by_id
                     ],
                 }
                 for group_no in group_choices
@@ -935,8 +943,9 @@ elif role == "admin":
             group_boards.append({
                 "header": "尚未組隊",
                 "items": [
-                    f"{student.get('seat_no')} 號｜{student.get('name')}"
+                    student_label_by_id[student["id"]]
                     for student in ungrouped
+                    if student["id"] in student_label_by_id
                 ],
             })
             st.caption(
