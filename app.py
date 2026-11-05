@@ -316,13 +316,20 @@ def show_group(group):
     if linked_group is not None:
         member_rows = (
             admin.table("group_signups")
-            .select("seat_no, student_name")
+            .select("student_id, seat_no, student_name")
             .eq("assigned_group", linked_group)
             .order("seat_no").execute().data
         )
+        leader_rows = (
+            admin.table("group_leaders")
+            .select("leader_student_id")
+            .eq("group_number", linked_group)
+            .limit(1).execute().data
+        )
+        leader_student_id = leader_rows[0]["leader_student_id"] if leader_rows else None
         if member_rows:
             member_text = "、".join(
-                f"{row.get('seat_no')} 號｜{row.get('student_name')}"
+                f"{row.get('seat_no')} 號｜{'組長｜' if row.get('student_id') == leader_student_id else ''}{row.get('student_name')}"
                 for row in member_rows
             )
         else:
@@ -572,13 +579,21 @@ if role == "student":
                 st.success(f"你已加入第 {my_group_no} 組，不能再加入其他組別。")
                 member_rows = (
                     admin.table("group_signups")
-                    .select("seat_no, student_name")
+                    .select("student_id, seat_no, student_name")
                     .eq("assigned_group", my_group_no)
                     .order("seat_no").execute().data
                 )
+                display_leader_rows = (
+                    admin.table("group_leaders")
+                    .select("leader_student_id")
+                    .eq("group_number", my_group_no)
+                    .limit(1).execute().data
+                )
+                display_leader_id = display_leader_rows[0]["leader_student_id"] if display_leader_rows else None
                 st.markdown(f"**第 {my_group_no} 組組員名單**")
                 for member in member_rows:
-                    st.write(f"{member['seat_no']} 號｜{member['student_name']}")
+                    leader_prefix = "組長｜" if member.get("student_id") == display_leader_id else ""
+                    st.write(f"{member['seat_no']} 號｜{leader_prefix}{member['student_name']}")
 
                 st.divider()
                 st.markdown("### 📷 本組小組合照（共 4 張）")
@@ -757,10 +772,13 @@ elif role == "teacher":
                 if group_no is not None:
                     assigned.setdefault(group_no, []).append(row)
                     assigned_student_ids.add(row.get("student_id"))
+            leader_records_for_roster = admin.table("group_leaders").select("group_number, leader_student_id").execute().data
+            roster_leaders = {item["group_number"]: item["leader_student_id"] for item in leader_records_for_roster}
             for group_no in sorted(assigned):
                 st.markdown(f"### 第 {group_no} 組")
                 for row in assigned[group_no]:
-                    st.write(f"{row.get('seat_no')} 號｜{row.get('student_name')}")
+                    leader_prefix = "組長｜" if row.get("student_id") == roster_leaders.get(group_no) else ""
+                    st.write(f"{row.get('seat_no')} 號｜{leader_prefix}{row.get('student_name')}")
             unassigned_students = [
                 student for student in students
                 if student.get("id") not in assigned_student_ids
