@@ -1,0 +1,30 @@
+name: Python syntax validation
+
+on:
+  push:
+    branches:
+      - main
+      - redesign
+    paths:
+      - "app.py"
+      - ".github/workflows/python-compile.yml"
+  pull_request:
+    branches:
+      - main
+      - redesign
+    paths:
+      - "app.py"
+      - ".github/workflows/python-compile.yml"
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Streamlit app
+        run: python -m py_compile app.py
