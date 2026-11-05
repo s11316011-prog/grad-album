@@ -541,6 +541,50 @@ if role == "student":
         "personal_rules_list": "1. 每位同學都必須繳交個人生活照。\\n2. 不可用任何方式遮蓋五官。\\n3. 請採用七分身拍攝方式。\\n4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\\n5. 請於 11 月 13 日前至指定網址繳交。",
         "personal_rules_extra": "七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。",
         "personal_rules_contact": "如有任何問題，請直接提出，或私下向相關負責人反映。",
+        "roster_title": student_content["roster_title"],
+        "roster_caption": student_content["roster_caption"],
+        "roster_empty": student_content["roster_empty"],
+        "roster_load_error": student_content["roster_load_error"],
+        "roster_unassigned_label": student_content["roster_unassigned_label"],
+        "tab_announcements": student_content["tab_announcements"],
+        "tab_personal_upload": student_content["tab_personal_upload"],
+        "tab_my_photos": student_content["tab_my_photos"],
+        "tab_group_signup": student_content["tab_group_signup"],
+        "tab_class_photo": student_content["tab_class_photo"],
+        "tab_personal_rules": student_content["tab_personal_rules"],
+        "no_student_sections": student_content["no_student_sections"],
+        "upload_title": student_content["upload_title"],
+        "upload_intro": student_content["upload_intro"],
+        "upload_file_help": student_content["upload_file_help"],
+        "upload_button": student_content["upload_button"],
+        "upload_choose_warning": student_content["upload_choose_warning"],
+        "my_photos_empty": student_content["my_photos_empty"],
+        "my_photos_error": student_content["my_photos_error"],
+        "class_photo_title": student_content["class_photo_title"],
+        "class_photo_actions_label": student_content["class_photo_actions_label"],
+        "announcements_caption": student_content["announcements_caption"],
+        "announcements_empty": student_content["announcements_empty"],
+        "announcement_pinned": student_content["announcement_pinned"],
+        "announcement_default_category": student_content["announcement_default_category"],
+        "announcements_error": student_content["announcements_error"],
+        "group_signup_title": student_content["group_signup_title"],
+        "group_signup_caption": student_content["group_signup_caption"],
+        "group_leader_missing": student_content["group_leader_missing"],
+        "group_photo_leader_help": student_content["group_photo_leader_help"],
+        "group_photo_member_help": student_content["group_photo_member_help"],
+        "group_photo_uploaded": student_content["group_photo_uploaded"],
+        "group_photo_missing": student_content["group_photo_missing"],
+        "group_photo_error": student_content["group_photo_error"],
+        "group_member_input": student_content["group_member_input"],
+        "group_member_help": student_content["group_member_help"],
+        "group_submit": student_content["group_submit"],
+        "group_need_member": student_content["group_need_member"],
+        "group_self_member": student_content["group_self_member"],
+        "group_duplicate_error": student_content["group_duplicate_error"],
+        "group_seat_error": student_content["group_seat_error"],
+        "group_submit_error": student_content["group_submit_error"],
+        "group_load_error": student_content["group_load_error"],
+        "personal_rules_title": student_content["personal_rules_title"],
     }
     try:
         saved_display_rows = admin.table("site_settings").select("setting_key, setting_value").execute().data
@@ -557,8 +601,8 @@ if role == "student":
     student_content = student_content_defaults
     show_class_group_roster = student_display_settings["show_class_group_roster"]
     if show_class_group_roster:
-        st.subheader("👥 全班分組一覽")
-        st.caption("所有同學都可以查看目前各組名單；組長會特別標示。")
+        st.subheader(student_content["roster_title"])
+        st.caption(student_content["roster_caption"])
         try:
             roster_students = (
                 admin.table("grad_album")
@@ -593,22 +637,22 @@ if role == "student":
                                 leader_prefix = "組長｜" if member.get("id") == roster_leaders.get(group_no) else ""
                                 st.write(f"{member.get('seat_no')} 號｜{leader_prefix}{member.get('name')}")
             else:
-                st.info("目前尚未有學生完成分組。")
+                st.info(student_content["roster_empty"])
             roster_unassigned = [student for student in roster_students if student.get("id") not in roster_assigned_ids]
             if roster_unassigned:
                 with st.expander(f"尚未分組（{len(roster_unassigned)} 位）"):
                     for student in roster_unassigned:
                         st.write(f"{student.get('seat_no')} 號｜{student.get('name')}")
         except Exception:
-            st.warning("目前無法載入全班分組名單，請稍後重新整理。")
+            st.warning(student_content["roster_load_error"])
     
     student_tab_specs = [
-        ("show_student_announcements", "📢 最新公告"),
-        ("show_personal_photo_upload", "📤 個人生活照繳交"),
-        ("show_my_photos", "🖼️ 我的照片"),
-        ("show_group_signup", "👥 分組登記＆小組照繳交"),
-        ("show_class_group_photo", "📸 班級團體照"),
-        ("show_personal_photo_rules", "📝 個人生活照須知"),
+        ("show_student_announcements", student_content["tab_announcements"]),
+        ("show_personal_photo_upload", student_content["tab_personal_upload"]),
+        ("show_my_photos", student_content["tab_my_photos"]),
+        ("show_group_signup", student_content["tab_group_signup"]),
+        ("show_class_group_photo", student_content["tab_class_photo"]),
+        ("show_personal_photo_rules", student_content["tab_personal_rules"]),
     ]
     visible_student_tabs = [(key, label) for key, label in student_tab_specs if student_display_settings[key]]
     if visible_student_tabs:
@@ -616,19 +660,19 @@ if role == "student":
         student_tab_map = {key: tab for (key, _), tab in zip(visible_student_tabs, student_tab_objects)}
     else:
         student_tab_map = {}
-        st.info("目前沒有開放顯示的學生頁面內容，請聯絡管理員。")
+        st.info(student_content["no_student_sections"])
     if "show_personal_photo_upload" in student_tab_map:
         with student_tab_map["show_personal_photo_upload"]:
-            st.subheader("上傳個人生活照")
-            st.info("每位同學都必須繳交個人生活照，請先閱讀「個人生活照須知」再上傳。")
+            st.subheader(student_content["upload_title"])
+            st.info(student_content["upload_intro"])
             files = st.file_uploader(
-                "可多選 JPG、PNG、WEBP，每張上限 10 MB",
+                student_content["upload_file_help"],
                 type=["jpg", "jpeg", "png", "webp"],
                 accept_multiple_files=True,
             )
-            if st.button("確認上傳", type="primary"):
+            if st.button(student_content["upload_button"], type="primary"):
                 if not files:
-                    st.warning("請先選擇照片。")
+                    st.warning(student_content["upload_choose_warning"])
                 else:
                     count = 0
                     for file in files:
@@ -651,29 +695,29 @@ if role == "student":
             try:
                 paths = list_student_photos(identity["seat_no"])
                 if not paths:
-                    st.info("目前還沒有上傳照片。")
+                    st.info(student_content["my_photos_empty"])
                 else:
                     cols = st.columns(3)
                     for i, path in enumerate(paths):
                         with cols[i % 3]:
                             st.image(make_url(path), use_container_width=True)
             except Exception:
-                st.error("照片讀取失敗，請稍後再試。")
+                st.error(student_content["my_photos_error"])
     if "show_class_group_photo" in student_tab_map:
         with student_tab_map["show_class_group_photo"]:
-            st.subheader("班級團體照拍攝公告")
+            st.subheader(student_content["class_photo_title"])
             st.markdown(f"**拍攝日期：** {student_content['class_photo_date']}")
             st.markdown(f"**集合時間：** {student_content['class_photo_time']}")
             st.markdown(f"**集合地點：** {student_content['class_photo_location']}")
             st.markdown(f"**服裝要求：** {student_content['class_photo_clothing']}")
             st.markdown(f"**預計拍攝：** {student_content['class_photo_count']}")
-            st.markdown("**指定動作：**")
+            st.markdown(student_content["class_photo_actions_label"])
             st.markdown(student_content["class_photo_actions"])
             st.warning(student_content["class_photo_notice"])
     if "show_student_announcements" in student_tab_map:
         with student_tab_map["show_student_announcements"]:
-            st.subheader("📢 最新公告")
-            st.caption("查看畢冊製作組發布的重要通知、拍攝異動及活動提醒。")
+            st.subheader(student_content["tab_announcements"])
+            st.caption(student_content["announcements_caption"])
             try:
                 now_utc = datetime.now(timezone.utc)
                 notices = (
@@ -693,25 +737,25 @@ if role == "student":
                     ):
                         visible_notices.append(notice)
                 if not visible_notices:
-                    st.info("目前沒有已發布的公告。")
+                    st.info(student_content["announcements_empty"])
                 for notice in visible_notices:
                     with st.container(border=True):
                         flags = []
                         if notice.get("is_pinned"):
-                            flags.append("📌 置頂")
-                        flags.append(notice.get("category") or "一般通知")
+                            flags.append(student_content["announcement_pinned"])
+                        flags.append(notice.get("category") or student_content["announcement_default_category"])
                         st.markdown(f"### {' '.join(flags)}")
                         st.markdown(f"**{notice['title']}**")
                         st.write(notice["content"])
                         st.caption(f"發布時間：{notice['publish_at'][:16].replace('T', ' ')}")
             except Exception:
-                st.error("公告讀取失敗，請稍後再試。")
+                st.error(student_content["announcements_error"])
     if "show_group_signup" in student_tab_map:
         with student_tab_map["show_group_signup"]:
-            st.subheader("分組登記與小組合照繳交")
+            st.subheader(student_content["group_signup_title"])
             st.info(student_content["group_notice"])
             st.write(f"組長：**{identity['seat_no']} 號｜{identity['name']}**")
-            st.caption("由組長建立小組，輸入其他組員的座號即可。系統會自動帶入正確姓名，並將整組名單一次送出。")
+            st.caption(student_content["group_signup_caption"])
             try:
                 my_group_rows = (
                     admin.table("group_signups")
@@ -760,11 +804,11 @@ if role == "student":
                             leader_rows and leader_rows[0]["leader_student_id"] == identity["id"]
                         )
                         if not leader_rows:
-                            st.warning("本組組長尚未完成上傳權限登記，請聯絡管理員協助設定。")
+                            st.warning(student_content["group_leader_missing"])
                         elif is_group_leader:
-                            st.caption("由組長統一上傳本組 4 張照片。每個欄位可重新上傳替換；每張上限 10 MB。")
+                            st.caption(student_content["group_photo_leader_help"])
                         else:
-                            st.caption("本組照片由組長統一上傳，你可以查看目前繳交進度。")
+                            st.caption(student_content["group_photo_member_help"])
                         photo_cols = st.columns(4)
                         for slot in range(1, 5):
                             with photo_cols[slot - 1]:
@@ -772,9 +816,9 @@ if role == "student":
                                 existing_photo = photo_by_slot.get(slot)
                                 if existing_photo:
                                     st.image(make_url(existing_photo["storage_path"]), use_container_width=True)
-                                    st.success("已繳交")
+                                    st.success(student_content["group_photo_uploaded"])
                                 else:
-                                    st.info("尚未繳交")
+                                    st.info(student_content["group_photo_missing"])
                                 if is_group_leader:
                                     chosen_photo = st.file_uploader(
                                         f"選擇第 {slot} 張",
@@ -809,15 +853,15 @@ if role == "student":
                                             except Exception:
                                                 st.error(f"第 {slot} 張照片上傳失敗，請稍後再試。")
                     except Exception:
-                        st.error("小組照片讀取失敗，請稍後再試。")
+                        st.error(student_content["group_photo_error"])
                 else:
                     with st.form("student_create_group_form"):
                         member_seats_text = st.text_area(
-                            "其他組員座號",
+                            student_content["group_member_input"],
                             placeholder="例如：2、5、8\n也可以每行輸入一個座號",
-                            help="不用輸入自己的座號，系統會自動把你列為組長。可用逗號、頓號或換行分隔。",
+                            help=student_content["group_member_help"],
                         )
-                        confirm_group = st.form_submit_button("確認組隊並送出", type="primary")
+                        confirm_group = st.form_submit_button(student_content["group_submit"], type="primary")
                     if confirm_group:
                         import re
                         member_seats = [
@@ -825,9 +869,9 @@ if role == "student":
                             if value
                         ]
                         if not member_seats:
-                            st.warning("請至少輸入一位其他組員的座號。")
+                            st.warning(student_content["group_need_member"])
                         elif str(identity["seat_no"]).strip() in member_seats:
-                            st.error("不用輸入自己的座號，系統會自動加入組長。")
+                            st.error(student_content["group_self_member"])
                         else:
                             try:
                                 result = admin.rpc(
@@ -850,16 +894,16 @@ if role == "student":
                             except Exception as submit_error:
                                 error_text = str(submit_error)
                                 if "已經加入其他小組" in error_text or "重複" in error_text:
-                                    st.error("送出失敗：組員名單有重複，或有人已經加入其他小組。請重新確認座號。")
+                                    st.error(student_content["group_duplicate_error"])
                                 elif "座號不存在" in error_text:
-                                    st.error("送出失敗：有座號查不到，請確認座號是否正確。")
+                                    st.error(student_content["group_seat_error"])
                                 else:
-                                    st.error("小組送出失敗，請稍後重試；若持續發生，請聯絡畢冊製作組。")
+                                    st.error(student_content["group_submit_error"])
             except Exception:
-                st.error("小組組隊功能目前無法讀取資料，請稍後再試或聯絡畢冊製作組。")
+                st.error(student_content["group_load_error"])
     if "show_personal_photo_rules" in student_tab_map:
         with student_tab_map["show_personal_photo_rules"]:
-            st.subheader("個人生活照繳交規範")
+            st.subheader(student_content["personal_rules_title"])
             st.warning(student_content["personal_rules_deadline"])
             st.markdown(student_content["personal_rules_list"])
             st.info(student_content["personal_rules_extra"])
