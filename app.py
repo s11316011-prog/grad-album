@@ -478,48 +478,48 @@ if role == "student":
         st.subheader("👥 全班分組一覽")
         st.caption("所有同學都可以查看目前各組名單；組長會特別標示。")
         try:
-        roster_students = (
-            admin.table("grad_album")
-            .select("id, seat_no, name")
-            .order("seat_no").execute().data
-        )
-        roster_signups = (
-            admin.table("group_signups")
-            .select("student_id, assigned_group")
-            .execute().data
-        )
-        roster_leader_rows = admin.table("group_leaders").select("group_number, leader_student_id").execute().data
-        roster_leaders = {item["group_number"]: item["leader_student_id"] for item in roster_leader_rows}
-        roster_groups = {}
-        roster_assigned_ids = set()
-        for signup in roster_signups:
-            group_no = signup.get("assigned_group")
-            student_id = signup.get("student_id")
-            if group_no is not None and student_id is not None:
-                roster_groups.setdefault(group_no, []).append(student_id)
-                roster_assigned_ids.add(student_id)
-        if roster_groups:
-            group_numbers = sorted(roster_groups)
-            group_columns = st.columns(min(3, len(group_numbers)))
-            for index, group_no in enumerate(group_numbers):
-                with group_columns[index % len(group_columns)]:
-                    with st.container(border=True):
-                        st.markdown(f"**第 {group_no} 組**")
-                        member_ids = set(roster_groups[group_no])
-                        group_members = [student for student in roster_students if student.get("id") in member_ids]
-                        for member in group_members:
-                            leader_prefix = "組長｜" if member.get("id") == roster_leaders.get(group_no) else ""
-                            st.write(f"{member.get('seat_no')} 號｜{leader_prefix}{member.get('name')}")
-        else:
-            st.info("目前尚未有學生完成分組。")
-        roster_unassigned = [student for student in roster_students if student.get("id") not in roster_assigned_ids]
-        if roster_unassigned:
-            with st.expander(f"尚未分組（{len(roster_unassigned)} 位）"):
-                for student in roster_unassigned:
-                    st.write(f"{student.get('seat_no')} 號｜{student.get('name')}")
-    except Exception:
-        st.warning("目前無法載入全班分組名單，請稍後重新整理。")
-
+            roster_students = (
+                admin.table("grad_album")
+                .select("id, seat_no, name")
+                .order("seat_no").execute().data
+            )
+            roster_signups = (
+                admin.table("group_signups")
+                .select("student_id, assigned_group")
+                .execute().data
+            )
+            roster_leader_rows = admin.table("group_leaders").select("group_number, leader_student_id").execute().data
+            roster_leaders = {item["group_number"]: item["leader_student_id"] for item in roster_leader_rows}
+            roster_groups = {}
+            roster_assigned_ids = set()
+            for signup in roster_signups:
+                group_no = signup.get("assigned_group")
+                student_id = signup.get("student_id")
+                if group_no is not None and student_id is not None:
+                    roster_groups.setdefault(group_no, []).append(student_id)
+                    roster_assigned_ids.add(student_id)
+            if roster_groups:
+                group_numbers = sorted(roster_groups)
+                group_columns = st.columns(min(3, len(group_numbers)))
+                for index, group_no in enumerate(group_numbers):
+                    with group_columns[index % len(group_columns)]:
+                        with st.container(border=True):
+                            st.markdown(f"**第 {group_no} 組**")
+                            member_ids = set(roster_groups[group_no])
+                            group_members = [student for student in roster_students if student.get("id") in member_ids]
+                            for member in group_members:
+                                leader_prefix = "組長｜" if member.get("id") == roster_leaders.get(group_no) else ""
+                                st.write(f"{member.get('seat_no')} 號｜{leader_prefix}{member.get('name')}")
+            else:
+                st.info("目前尚未有學生完成分組。")
+            roster_unassigned = [student for student in roster_students if student.get("id") not in roster_assigned_ids]
+            if roster_unassigned:
+                with st.expander(f"尚未分組（{len(roster_unassigned)} 位）"):
+                    for student in roster_unassigned:
+                        st.write(f"{student.get('seat_no')} 號｜{student.get('name')}")
+        except Exception:
+            st.warning("目前無法載入全班分組名單，請稍後重新整理。")
+    
     announcement_tab, upload_tab, mine_tab, group_tab, class_tab, personal_tab = st.tabs([
         "📢 最新公告",
         "📤 個人生活照繳交",
