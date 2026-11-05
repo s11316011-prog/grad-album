@@ -420,6 +420,7 @@ if role is None:
                 if matched:
                     set_session("admin", {
                         "username": matched["username"],
+                        "display_name": matched.get("display_name") or matched["username"],
                         "staff_role": matched["role"],
                     })
                     st.rerun()
@@ -455,18 +456,72 @@ identity = st.session_state.get("identity") or {}
 st.caption("登入有效時間：30 分鐘")
 if role == "student":
     st.success(f"學生登入成功：{identity['seat_no']} 號｜{identity['name']}")
-elif role == "teacher":
+else:
     st.success(f"{identity.get('display_name') or identity.get('username') or '管理員'}，你好！")
-elif role == "admin":
-    st.success(f"{identity.get('display_name') or identity.get('username') or '管理員'}，你好！")
-refresh_col, logout_col = st.columns(2)
+
+# 登入後常用操作：靠右排列，刷新不會清除登入狀態。
+toolbar_spacer, refresh_col, password_col, logout_col = st.columns([5, 1.25, 1.4, 1])
 with refresh_col:
-    if st.button("🔄 刷新頁面", use_container_width=True, key="refresh_page_button"):
-        # 只重新執行 Streamlit 頁面，不清除登入 session。
+    if st.button("🔄 刷新", use_container_width=True, key="refresh_page_button"):
         st.rerun()
+with password_col:
+    if st.button("🔐 更改密碼", use_container_width=True, key="toggle_change_password"):
+        st.session_state["show_change_password_form"] = not st.session_state.get("show_change_password_form", False)
 with logout_col:
     if st.button("登出", use_container_width=True, key="logout_button"):
         logout()
+
+if st.session_state.get("show_change_password_form", False):
+    with st.container(border=True):
+        st.markdown("### 🔐 更改密碼")
+        if role == "student":
+            st.caption("請輸入目前密碼及新密碼完成修改。")
+            old_pwd = st.text_input("目前密碼", type="password", key="logged_student_old_pwd")
+            new_pwd = st.text_input("新密碼（8～128 個字元）", type="password", key="logged_student_new_pwd")
+            confirm_pwd = st.text_input("再次輸入新密碼", type="password", key="logged_student_confirm_pwd")
+            if st.button("確認更改密碼", type="primary", key="logged_student_change_pwd"):
+                if not all([old_pwd, new_pwd, confirm_pwd]):
+                    st.warning("請完整填寫所有欄位。")
+                elif not 8 <= len(new_pwd) <= 128:
+                    st.warning("新密碼長度需為 8～128 個字元。")
+                elif new_pwd != confirm_pwd:
+                    st.error("兩次輸入的新密碼不一致。")
+                else:
+                    try:
+                        changed = admin.rpc("change_student_password", {
+                            "input_seat_no": str(identity["seat_no"]),
+                            "input_old_password": old_pwd,
+                            "input_new_password": new_pwd,
+                        }).execute().data
+                        if changed is True:
+                            st.success("密碼已更新，請下次使用新密碼登入。")
+                            st.session_state["show_change_password_form"] = False
+                        else:
+                            st.error("目前密碼錯誤，密碼未變更。")
+                    except Exception:
+                        st.error("目前無法更改密碼，請稍後再試。")
+        else:
+            st.caption("正在修改目前登入的管理員帳號密碼。")
+            old_pwd = st.text_input("目前密碼", type="password", key="logged_staff_old_pwd")
+            new_pwd = st.text_input("新密碼（8～128 個字元）", type="password", key="logged_staff_new_pwd")
+            confirm_pwd = st.text_input("再次輸入新密碼", type="password", key="logged_staff_confirm_pwd")
+            if st.button("確認更改密碼", type="primary", key="logged_staff_change_pwd"):
+                if not all([old_pwd, new_pwd, confirm_pwd]):
+                    st.warning("請完整填寫所有欄位。")
+                elif not 8 <= len(new_pwd) <= 128:
+                    st.warning("新密碼長度需為 8～128 個字元。")
+                elif new_pwd != confirm_pwd:
+                    st.error("兩次輸入的新密碼不一致。")
+                else:
+                    try:
+                        changed = change_staff_password(identity.get("username", ""), old_pwd, new_pwd)
+                        if changed:
+                            st.success("密碼已更新，請下次使用新密碼登入。")
+                            st.session_state["show_change_password_form"] = False
+                        else:
+                            st.error("目前密碼錯誤或帳號已停用，密碼未變更。")
+                    except Exception:
+                        st.error("目前無法更改密碼，請稍後再試。")
 
 if role == "student":
     try:
