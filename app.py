@@ -949,12 +949,14 @@ elif role == "admin":
                 key="admin_notion_group_board",
             )
             if st.button("儲存看板上的全班調整", type="primary", key="admin_save_all_group_cards"):
+                save_step = "整理拖曳後的學生名單"
                 try:
                     group_by_header = {
                         f"第 {group_no} 組": group_no
                         for group_no in group_choices
                     }
                     target_groups = {}
+                    save_step = "檢查每位學生是否只出現一次"
                     for board in sorted_boards:
                         header = board.get("header")
                         if header == "尚未組隊":
@@ -971,16 +973,19 @@ elif role == "admin":
                     if set(target_groups) != {student["id"] for student in students}:
                         st.error("全班名單不完整或有重複，沒有儲存任何變更。")
                         st.stop()
+                    save_step = "比對目前分組與新分組"
                     current_groups = {
                         row.get("student_id"): row.get("assigned_group")
                         for row in signups
                     }
+                    save_step = "逐位更新學生分組"
                     for student in students:
                         student_id = student["id"]
                         target_group = target_groups[student_id]
                         current_group = current_groups.get(student_id)
                         if current_group == target_group:
                             continue
+                        save_step = f"更新學生 {student.get('seat_no', '')} 號的分組"
                         if target_group is None:
                             if student_id in current_groups:
                                 admin.table("group_signups").update(
@@ -996,8 +1001,11 @@ elif role == "admin":
                             ).execute()
                     st.success("看板上的全班分組調整已儲存。")
                     st.rerun()
-                except Exception:
-                    st.error("全班分組儲存失敗，請重新整理後再試。")
+                except Exception as e:
+                    st.error(f"全班分組儲存失敗，錯誤發生於：{save_step}")
+                    error_detail = f"{type(e).__name__}: {e}"
+                    st.code(error_detail[:1500])
+                    st.info("請把上方錯誤文字回報給我；不要貼上任何密碼或金鑰。")
 
             if group_choices:
                 st.markdown("### 刪除整組")
