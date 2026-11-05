@@ -838,7 +838,7 @@ if role == "student":
                         photo_cols = st.columns(4)
                         for slot in range(1, 5):
                             with photo_cols[slot - 1]:
-                                st.markdown(f"**第 {slot} 張**")
+                                st.markdown(student_content["group_photo_slot"].format(slot=slot))
                                 existing_photo = photo_by_slot.get(slot)
                                 if existing_photo:
                                     st.image(make_url(existing_photo["storage_path"]), use_container_width=True)
@@ -847,12 +847,12 @@ if role == "student":
                                     st.info(student_content["group_photo_missing"])
                                 if is_group_leader:
                                     chosen_photo = st.file_uploader(
-                                        f"選擇第 {slot} 張",
+                                        student_content["group_photo_choose"].format(slot=slot),
                                         type=["jpg", "jpeg", "png", "webp"],
                                         key=f"group_photo_file_{my_group_no}_{slot}",
                                     )
                                     if st.button(
-                                        f"上傳／替換第 {slot} 張",
+                                        student_content["group_photo_upload"].format(slot=slot),
                                         key=f"group_photo_upload_{my_group_no}_{slot}",
                                         disabled=chosen_photo is None,
                                     ):
@@ -874,17 +874,17 @@ if role == "student":
                                                 }, on_conflict="group_number,photo_slot").execute()
                                                 if old_path:
                                                     admin.storage.from_(BUCKET).remove([old_path])
-                                                st.success(f"第 {slot} 張小組照已上傳。")
+                                                st.success(student_content["group_photo_success"].format(slot=slot))
                                                 st.rerun()
                                             except Exception:
-                                                st.error(f"第 {slot} 張照片上傳失敗，請稍後再試。")
+                                                st.error(student_content["group_photo_fail"].format(slot=slot))
                     except Exception:
                         st.error(student_content["group_photo_error"])
                 else:
                     with st.form("student_create_group_form"):
                         member_seats_text = st.text_area(
                             student_content["group_member_input"],
-                            placeholder="例如：2、5、8\n也可以每行輸入一個座號",
+                            placeholder=student_content["group_member_placeholder"],
                             help=student_content["group_member_help"],
                         )
                         confirm_group = st.form_submit_button(student_content["group_submit"], type="primary")
@@ -913,8 +913,7 @@ if role == "student":
                                     "leader_student_id": identity["id"],
                                 }, on_conflict="group_number").execute()
                                 st.success(
-                                    f"組隊成功！第 {submitted_group['group_number']} 組，"
-                                    f"共 {submitted_group['member_count']} 位組員。"
+                                    student_content["group_success"].format(group_no=submitted_group['group_number'], member_count=submitted_group['member_count'])
                                 )
                                 st.rerun()
                             except Exception as submit_error:
