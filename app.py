@@ -454,8 +454,14 @@ elif role == "admin":
         st.success("管理員登入成功")
     else:
         st.success("管理員登入成功")
-if st.button("登出"):
-    logout()
+refresh_col, logout_col = st.columns(2)
+with refresh_col:
+    if st.button("🔄 刷新頁面", use_container_width=True, key="refresh_page_button"):
+        # 只重新執行 Streamlit 頁面，不清除登入 session。
+        st.rerun()
+with logout_col:
+    if st.button("登出", use_container_width=True, key="logout_button"):
+        logout()
 
 if role == "student":
     announcement_tab, upload_tab, mine_tab, group_tab, class_tab, personal_tab = st.tabs([
