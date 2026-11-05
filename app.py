@@ -1473,7 +1473,7 @@ elif role == "admin":
 
     with display_settings_tab:
         st.subheader("⚙️ 學生頁面設定")
-        st.caption("每個區塊都能獨立開關，也能編輯頁面文字及拍攝資訊。")
+        st.caption("學生頁面有 7 個獨立顯示開關；固定文字、標題、按鈕、提示及密碼操作文字都能編輯。公告標題與內容仍由公告管理中心維護；格式中的 {seat_no}、{name}、{count} 等欄位請保留。")
         visibility_options = [
             ("show_class_group_roster", "👥 全班分組一覽"),
             ("show_student_announcements", "📢 最新公告"),
@@ -1689,14 +1689,14 @@ elif role == "admin":
                 extra_content_labels = {
                     "roster_group_title": "分組標題格式",
                     "roster_leader_prefix": "組長標示文字",
-                    "roster_member_format": "組員名單格式",
-                    "roster_unassigned_member_format": "未分組名單格式",
+                    "roster_member_format": "組員名單格式（{seat_no}、{leader_prefix}、{name}）",
+                    "roster_unassigned_member_format": "未分組名單格式（{seat_no}、{name}）",
                     "class_photo_date_label": "拍攝日期欄位標籤",
                     "class_photo_time_label": "集合時間欄位標籤",
                     "class_photo_location_label": "集合地點欄位標籤",
                     "class_photo_clothing_label": "服裝要求欄位標籤",
                     "class_photo_count_label": "拍攝張數欄位標籤",
-                    "group_photo_upload_error": "小組照片格式錯誤提示",
+                    "group_photo_upload_error": "小組照片格式錯誤提示（{error} 會代入錯誤原因）",
                 }
                 for key, label in extra_content_labels.items():
                     edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
