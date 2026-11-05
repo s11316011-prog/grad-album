@@ -623,7 +623,7 @@ if role == "student":
         "class_photo_location_label": "**集合地點：**",
         "class_photo_clothing_label": "**服裝要求：**",
         "class_photo_count_label": "**預計拍攝：**",
-        "group_photo_upload_error": "照片格式或大小不符合規定。",
+        "group_photo_upload_error": "{error}",
         "login_session_caption": "登入有效時間：30 分鐘",
         "student_login_success": "學生登入成功：{seat_no} 號｜{name}",
         "refresh_button": "🔄 刷新",
@@ -888,7 +888,7 @@ if role == "student":
                                     ):
                                         photo_data, photo_mime, photo_error = image_info(chosen_photo)
                                         if photo_error:
-                                            st.error(student_content["group_photo_upload_error"])
+                                            st.error(student_content["group_photo_upload_error"].format(error=photo_error))
                                         else:
                                             extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[photo_mime]
                                             new_path = f"shoot_groups/{my_group_no}/{slot}_{uuid.uuid4().hex}.{extension}"
@@ -1508,7 +1508,7 @@ elif role == "admin":
                 "class_photo_notice": "請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。",
                 "group_notice": "小組拍攝注意事項\n\n（1）需要 4 張\n\n（2）動作需自行決定",
                 "personal_rules_deadline": "每位同學都必須繳交，截止日期為 11 月 13 日。",
-                "personal_rules_list": "1. 每位同學都必須繳交個人生活照。\\n2. 不可用任何方式遮蓋五官。\\n3. 請採用七分身拍攝方式。\\n4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\\n5. 請於 11 月 13 日前至指定網址繳交。",
+                "personal_rules_list": "1. 每位同學都必須繳交個人生活照。\n2. 不可用任何方式遮蓋五官。\n3. 請採用七分身拍攝方式。\n4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\n5. 請於 11 月 13 日前至指定網址繳交。",
                 "personal_rules_extra": "七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。",
                 "personal_rules_contact": "如有任何問題，請直接提出，或私下向相關負責人反映。",
                 "roster_title": "👥 全班分組一覽",
