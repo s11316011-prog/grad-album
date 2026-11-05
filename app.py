@@ -172,7 +172,7 @@ def verify_staff_password(password: str, stored_hash: str) -> bool:
 def verify_staff_account(username: str, password: str, expected_role):
     rows = (
         admin.table("staff_accounts")
-        .select("username, role, password_hash, is_active")
+        .select("username, display_name, role, password_hash, is_active")
         .eq("username", username.strip())
         .in_("role", expected_role if isinstance(expected_role, (list, tuple)) else [expected_role])
         .limit(1)
@@ -182,7 +182,7 @@ def verify_staff_account(username: str, password: str, expected_role):
         return None
     row = rows[0]
     if verify_staff_password(password, row["password_hash"]):
-        return {"username": row["username"], "role": row["role"]}
+        return {"username": row["username"], "display_name": row.get("display_name") or row["username"], "role": row["role"]}
     return None
 
 def change_staff_password(username: str, old_password: str, new_password: str):
@@ -210,6 +210,7 @@ def bootstrap_staff_accounts():
     for account in BOOTSTRAP_ADMIN_ACCOUNTS:
         admin.table("staff_accounts").insert({
             "username": account["username"],
+            "display_name": account["username"],
             "role": "admin",
             "password_hash": hash_staff_password(account["password"]),
             "is_active": True,
@@ -448,12 +449,9 @@ st.caption("登入有效時間：30 分鐘")
 if role == "student":
     st.success(f"學生登入成功：{identity['seat_no']} 號｜{identity['name']}")
 elif role == "teacher":
-    st.success("管理員登入成功")
+    st.success(f"{identity.get('display_name') or identity.get('username') or '管理員'}，你好！")
 elif role == "admin":
-    if identity.get("staff_role") in ("teacher", "super_admin"):
-        st.success("管理員登入成功")
-    else:
-        st.success("管理員登入成功")
+    st.success(f"{identity.get('display_name') or identity.get('username') or '管理員'}，你好！")
 refresh_col, logout_col = st.columns(2)
 with refresh_col:
     if st.button("🔄 刷新頁面", use_container_width=True, key="refresh_page_button"):
@@ -786,12 +784,12 @@ elif role == "teacher":
 
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理"]
+    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理", "👤 人員資料管理"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
-    group_tab, signup_tab, photo_tab = created_tabs[:3]
-    staff_tab = created_tabs[3] if is_full_admin else None
+    group_tab, signup_tab, photo_tab, personnel_tab = created_tabs[:4]
+    staff_tab = created_tabs[4] if is_full_admin else None
     with signup_tab:
         st.subheader("學生自行組隊結果")
         st.caption("學生由組長建立小組並一次送出；每位學生只能屬於一組。管理員可查看各組名單及尚未組隊的學生。")
@@ -1216,6 +1214,61 @@ elif role == "admin":
         except Exception:
             st.error("照片清單讀取失敗，請確認 Storage bucket 名稱及權限。")
 
+    with personnel_tab:
+        st.subheader("👤 人員資料管理")
+        st.caption("可維護管理員顯示姓名及學生基本資料；不會修改學生密碼、分組關聯或照片。")
+        st.markdown("### 我的顯示姓名")
+        current_username = (identity.get("username") or "").strip()
+        try:
+            own_rows = admin.table("staff_accounts").select("display_name").eq("username", current_username).limit(1).execute().data
+            current_display_name = (own_rows[0].get("display_name") or current_username) if own_rows else current_username
+            with st.form("edit_own_display_name"):
+                own_display_name = st.text_input("登入後顯示名稱", value=current_display_name, max_chars=50)
+                save_own_name = st.form_submit_button("儲存我的姓名")
+            if save_own_name:
+                if not own_display_name.strip():
+                    st.warning("顯示姓名不可空白。")
+                else:
+                    admin.table("staff_accounts").update({
+                        "display_name": own_display_name.strip(),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("username", current_username).execute()
+                    identity["display_name"] = own_display_name.strip()
+                    st.session_state["identity"] = identity
+                    st.success("顯示姓名已更新。")
+                    st.rerun()
+        except Exception:
+            st.error("讀取或更新自己的顯示姓名失敗。")
+
+        st.divider()
+        st.markdown("### 學生資料")
+        try:
+            student_rows = admin.table("grad_album").select("id, seat_no, name").order("seat_no").execute().data
+            st.caption(f"目前共 {len(student_rows)} 位學生。修改座號或姓名不會更動學生 ID、密碼、分組及照片。")
+            for student_row in student_rows:
+                student_id = student_row["id"]
+                with st.expander(f"{student_row.get('seat_no')} 號｜{student_row.get('name')}"):
+                    with st.form(f"edit_student_profile_{student_id}"):
+                        edited_seat = st.text_input("座號", value=str(student_row.get("seat_no") or ""), key=f"edit_student_seat_{student_id}")
+                        edited_name = st.text_input("學生姓名", value=str(student_row.get("name") or ""), key=f"edit_student_name_{student_id}", max_chars=50)
+                        save_student_profile = st.form_submit_button("儲存學生資料")
+                    if save_student_profile:
+                        if not edited_seat.strip() or not edited_name.strip():
+                            st.warning("座號及姓名都不能空白。")
+                        else:
+                            duplicate_seat = admin.table("grad_album").select("id").eq("seat_no", edited_seat.strip()).neq("id", student_id).limit(1).execute().data
+                            if duplicate_seat:
+                                st.error("這個座號已經被其他學生使用。")
+                            else:
+                                admin.table("grad_album").update({
+                                    "seat_no": edited_seat.strip(),
+                                    "name": edited_name.strip(),
+                                }).eq("id", student_id).execute()
+                                st.success("學生資料已更新。")
+                                st.rerun()
+        except Exception:
+            st.error("學生資料讀取或更新失敗，請確認資料表欄位及權限。")
+
     if is_full_admin and staff_tab is not None:
         with staff_tab:
             is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
@@ -1224,6 +1277,7 @@ elif role == "admin":
             st.caption("帳號資料存放於 Supabase；密碼只保存 PBKDF2 雜湊值，不保存明文。")
             with st.form("create_staff_account", clear_on_submit=True):
                 new_username = st.text_input("新帳號")
+                new_display_name = st.text_input("顯示姓名")
                 new_password = st.text_input("設定密碼（至少 12 個字元）", type="password")
                 confirm_password = st.text_input("再次輸入密碼", type="password")
                 create_staff = st.form_submit_button("新增帳號")
@@ -1247,6 +1301,7 @@ elif role == "admin":
                         else:
                             admin.table("staff_accounts").insert({
                                 "username": new_username.strip(),
+                                "display_name": new_display_name.strip() or new_username.strip(),
                                 "role": "admin",
                                 "password_hash": hash_staff_password(new_password),
                                 "is_active": True,
@@ -1260,7 +1315,7 @@ elif role == "admin":
             try:
                 staff_rows = (
                     admin.table("staff_accounts")
-                    .select("id, username, role, is_active, created_at")
+                    .select("id, username, display_name, role, is_active, created_at")
                     .order("role")
                     .order("username")
                     .execute().data
@@ -1276,6 +1331,7 @@ elif role == "admin":
                             st.info("此為最高權限管理員帳號，只有最高權限管理員可以修改。")
                             continue
                         with st.form(f"edit_staff_{staff_id}"):
+                            display_name_value = st.text_input("顯示姓名", value=staff.get("display_name") or staff["username"], max_chars=50)
                             active_value = st.checkbox("啟用此帳號", value=staff["is_active"])
                             reset_password = st.text_input("更換密碼（留空代表不更換）", type="password")
                             save_staff = st.form_submit_button("儲存帳號設定")
@@ -1289,7 +1345,10 @@ elif role == "admin":
                                     if active_admins <= 1:
                                         st.error("至少必須保留一位啟用中的管理員。")
                                         st.stop()
-                                updates = {"is_active": active_value, "updated_at": datetime.now(timezone.utc).isoformat()}
+                                if not display_name_value.strip():
+                                    st.error("顯示姓名不可空白。")
+                                    st.stop()
+                                updates = {"display_name": display_name_value.strip(), "is_active": active_value, "updated_at": datetime.now(timezone.utc).isoformat()}
                                 if reset_password:
                                     if len(reset_password) < 12:
                                         st.error("新密碼至少需要 12 個字元。")
