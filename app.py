@@ -392,11 +392,11 @@ if role is None:
             confirm_student_pwd = st.text_input("再次輸入新密碼", type="password", key="student_confirm_pwd")
             if st.button("確認更改學生密碼", key="student_change_pwd_button", use_container_width=True):
                 if not all([change_seat.strip(), old_student_pwd, new_student_pwd, confirm_student_pwd]):
-                    st.warning("請完整填寫所有欄位。")
+                    st.warning(student_ui_text("password_fill_warning", "請完整填寫所有欄位。") if role == "student" else "請完整填寫所有欄位。")
                 elif len(new_student_pwd) < 8 or len(new_student_pwd) > 128:
-                    st.warning("新密碼長度需為 8～128 個字元。")
+                    st.warning(student_ui_text("password_length_warning", "新密碼長度需為 8～128 個字元。") if role == "student" else "新密碼長度需為 8～128 個字元。")
                 elif new_student_pwd != confirm_student_pwd:
-                    st.error("兩次輸入的新密碼不一致。")
+                    st.error(student_ui_text("password_mismatch_error", "兩次輸入的新密碼不一致。") if role == "student" else "兩次輸入的新密碼不一致。")
                 else:
                     try:
                         changed = admin.rpc("change_student_password", {
@@ -409,7 +409,7 @@ if role is None:
                         else:
                             st.error("座號或目前密碼錯誤，密碼未變更。")
                     except Exception:
-                        st.error("目前無法更改密碼，請稍後再試。")
+                        st.error(student_ui_text("password_general_error", "目前無法更改密碼，請稍後再試。") if role == "student" else "目前無法更改密碼，請稍後再試。")
     with admin_tab:
         st.subheader("管理員登入")
         username = st.text_input("管理員帳號", key="admin_user")
@@ -453,33 +453,46 @@ if role is None:
     st.stop()
 
 identity = st.session_state.get("identity") or {}
-st.caption("登入有效時間：30 分鐘")
+shared_student_content = {}
 if role == "student":
-    st.success(f"學生登入成功：{identity['seat_no']} 號｜{identity['name']}")
+    try:
+        shared_content_rows = admin.table("site_settings").select("setting_value").eq("setting_key", "student_page_content").limit(1).execute().data
+        if shared_content_rows and isinstance(shared_content_rows[0].get("setting_value"), dict):
+            shared_student_content = shared_content_rows[0]["setting_value"]
+    except Exception:
+        pass
+
+def student_ui_text(key, default):
+    value = shared_student_content.get(key, default)
+    return value if isinstance(value, str) else default
+
+st.caption(student_ui_text("login_session_caption", "登入有效時間：30 分鐘") if role == "student" else "登入有效時間：30 分鐘")
+if role == "student":
+    st.success(student_ui_text("student_login_success", "學生登入成功：{seat_no} 號｜{name}").format(seat_no=identity['seat_no'], name=identity['name']))
 else:
     st.success(f"{identity.get('display_name') or identity.get('username') or '管理員'}，你好！")
 
 # 登入後常用操作：靠右排列，刷新不會清除登入狀態。
 toolbar_spacer, refresh_col, password_col, logout_col = st.columns([5, 1.25, 1.4, 1])
 with refresh_col:
-    if st.button("🔄 刷新", use_container_width=True, key="refresh_page_button"):
+    if st.button(student_ui_text("refresh_button", "🔄 刷新") if role == "student" else "🔄 刷新", use_container_width=True, key="refresh_page_button"):
         st.rerun()
 with password_col:
-    if st.button("🔐 更改密碼", use_container_width=True, key="toggle_change_password"):
+    if st.button(student_ui_text("change_password_button", "🔐 更改密碼") if role == "student" else "🔐 更改密碼", use_container_width=True, key="toggle_change_password"):
         st.session_state["show_change_password_form"] = not st.session_state.get("show_change_password_form", False)
 with logout_col:
-    if st.button("登出", use_container_width=True, key="logout_button"):
+    if st.button(student_ui_text("logout_button", "登出") if role == "student" else "登出", use_container_width=True, key="logout_button"):
         logout()
 
 if st.session_state.get("show_change_password_form", False):
     with st.container(border=True):
-        st.markdown("### 🔐 更改密碼")
+        st.markdown(student_ui_text("password_title", "### 🔐 更改密碼") if role == "student" else "### 🔐 更改密碼")
         if role == "student":
-            st.caption("請輸入目前密碼及新密碼完成修改。")
-            old_pwd = st.text_input("目前密碼", type="password", key="logged_student_old_pwd")
-            new_pwd = st.text_input("新密碼（8～128 個字元）", type="password", key="logged_student_new_pwd")
-            confirm_pwd = st.text_input("再次輸入新密碼", type="password", key="logged_student_confirm_pwd")
-            if st.button("確認更改密碼", type="primary", key="logged_student_change_pwd"):
+            st.caption(student_ui_text("password_student_caption", "請輸入目前密碼及新密碼完成修改。"))
+            old_pwd = st.text_input(student_ui_text("password_current_label", "目前密碼"), type="password", key="logged_student_old_pwd")
+            new_pwd = st.text_input(student_ui_text("password_new_label", "新密碼（8～128 個字元）"), type="password", key="logged_student_new_pwd")
+            confirm_pwd = st.text_input(student_ui_text("password_confirm_label", "再次輸入新密碼"), type="password", key="logged_student_confirm_pwd")
+            if st.button(student_ui_text("password_submit_button", "確認更改密碼"), type="primary", key="logged_student_change_pwd"):
                 if not all([old_pwd, new_pwd, confirm_pwd]):
                     st.warning("請完整填寫所有欄位。")
                 elif not 8 <= len(new_pwd) <= 128:
@@ -494,10 +507,10 @@ if st.session_state.get("show_change_password_form", False):
                             "input_new_password": new_pwd,
                         }).execute().data
                         if changed is True:
-                            st.success("密碼已更新，請下次使用新密碼登入。")
+                            st.success(student_ui_text("password_success", "密碼已更新，請下次使用新密碼登入。") if role == "student" else "密碼已更新，請下次使用新密碼登入。")
                             st.session_state["show_change_password_form"] = False
                         else:
-                            st.error("目前密碼錯誤，密碼未變更。")
+                            st.error(student_ui_text("password_wrong_error", "目前密碼錯誤，密碼未變更。"))
                     except Exception:
                         st.error("目前無法更改密碼，請稍後再試。")
         else:
@@ -611,6 +624,23 @@ if role == "student":
         "class_photo_clothing_label": "**服裝要求：**",
         "class_photo_count_label": "**預計拍攝：**",
         "group_photo_upload_error": "照片格式或大小不符合規定。",
+        "login_session_caption": "登入有效時間：30 分鐘",
+        "student_login_success": "學生登入成功：{seat_no} 號｜{name}",
+        "refresh_button": "🔄 刷新",
+        "change_password_button": "🔐 更改密碼",
+        "logout_button": "登出",
+        "password_title": "### 🔐 更改密碼",
+        "password_student_caption": "請輸入目前密碼及新密碼完成修改。",
+        "password_current_label": "目前密碼",
+        "password_new_label": "新密碼（8～128 個字元）",
+        "password_confirm_label": "再次輸入新密碼",
+        "password_submit_button": "確認更改密碼",
+        "password_fill_warning": "請完整填寫所有欄位。",
+        "password_length_warning": "新密碼長度需為 8～128 個字元。",
+        "password_mismatch_error": "兩次輸入的新密碼不一致。",
+        "password_success": "密碼已更新，請下次使用新密碼登入。",
+        "password_wrong_error": "目前密碼錯誤，密碼未變更。",
+        "password_general_error": "目前無法更改密碼，請稍後再試。",
     }
     try:
         saved_display_rows = admin.table("site_settings").select("setting_key, setting_value").execute().data
@@ -1551,6 +1581,23 @@ elif role == "admin":
                 "class_photo_clothing_label": "**服裝要求：**",
                 "class_photo_count_label": "**預計拍攝：**",
                 "group_photo_upload_error": "照片格式或大小不符合規定。",
+                "login_session_caption": "登入有效時間：30 分鐘",
+                "student_login_success": "學生登入成功：{seat_no} 號｜{name}",
+                "refresh_button": "🔄 刷新",
+                "change_password_button": "🔐 更改密碼",
+                "logout_button": "登出",
+                "password_title": "### 🔐 更改密碼",
+                "password_student_caption": "請輸入目前密碼及新密碼完成修改。",
+                "password_current_label": "目前密碼",
+                "password_new_label": "新密碼（8～128 個字元）",
+                "password_confirm_label": "再次輸入新密碼",
+                "password_submit_button": "確認更改密碼",
+                "password_fill_warning": "請完整填寫所有欄位。",
+                "password_length_warning": "新密碼長度需為 8～128 個字元。",
+                "password_mismatch_error": "兩次輸入的新密碼不一致。",
+                "password_success": "密碼已更新，請下次使用新密碼登入。",
+                "password_wrong_error": "目前密碼錯誤，密碼未變更。",
+                "password_general_error": "目前無法更改密碼，請稍後再試。",
             }
             saved_content = current_settings.get("student_page_content")
             saved_content = saved_content if isinstance(saved_content, dict) else {}
@@ -1652,6 +1699,28 @@ elif role == "admin":
                     "group_photo_upload_error": "小組照片格式錯誤提示",
                 }
                 for key, label in extra_content_labels.items():
+                    edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
+                st.markdown("#### 🔐 學生登入與密碼操作文字")
+                shared_ui_labels = {
+          "login_session_caption": "登入時間提示",
+          "student_login_success": "學生登入成功訊息格式",
+          "refresh_button": "刷新按鈕文字",
+          "change_password_button": "更改密碼按鈕文字",
+          "logout_button": "登出按鈕文字",
+          "password_title": "更改密碼區塊標題",
+          "password_student_caption": "學生更改密碼說明",
+          "password_current_label": "目前密碼欄位標籤",
+          "password_new_label": "新密碼欄位標籤",
+          "password_confirm_label": "確認新密碼欄位標籤",
+          "password_submit_button": "確認更改密碼按鈕",
+          "password_fill_warning": "欄位未填寫提示",
+          "password_length_warning": "密碼長度錯誤提示",
+          "password_mismatch_error": "密碼不一致提示",
+          "password_success": "密碼更新成功提示",
+          "password_wrong_error": "目前密碼錯誤提示",
+          "password_general_error": "密碼更新失敗提示"
+}
+                for key, label in shared_ui_labels.items():
                     edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
                 save_content = st.form_submit_button("儲存內容設定", type="primary")
             if save_content:
