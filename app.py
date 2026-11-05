@@ -902,8 +902,11 @@ elif role == "admin":
                     ).execute()
                     st.success(f"已新增第 {next_number} 組。")
                     st.rerun()
-                except Exception:
-                    st.error("新增組別失敗，請重新整理後再試。")
+                except Exception as e:
+                    error_detail = str(e)
+                    st.error("新增組別失敗，資料庫回報：")
+                    st.code(error_detail[:1200] if error_detail else "未提供詳細錯誤訊息")
+                    st.info("請將上方錯誤內容回報，以便精確修復；不需要提供任何密碼或金鑰。")
 
             from streamlit_sortables import sort_items
             student_lookup = {
