@@ -392,11 +392,11 @@ if role is None:
             confirm_student_pwd = st.text_input("再次輸入新密碼", type="password", key="student_confirm_pwd")
             if st.button("確認更改學生密碼", key="student_change_pwd_button", use_container_width=True):
                 if not all([change_seat.strip(), old_student_pwd, new_student_pwd, confirm_student_pwd]):
-                    st.warning(student_ui_text("password_fill_warning", "請完整填寫所有欄位。") if role == "student" else "請完整填寫所有欄位。")
+                    st.warning("請完整填寫所有欄位。")
                 elif len(new_student_pwd) < 8 or len(new_student_pwd) > 128:
-                    st.warning(student_ui_text("password_length_warning", "新密碼長度需為 8～128 個字元。") if role == "student" else "新密碼長度需為 8～128 個字元。")
+                    st.warning("新密碼長度需為 8～128 個字元。")
                 elif new_student_pwd != confirm_student_pwd:
-                    st.error(student_ui_text("password_mismatch_error", "兩次輸入的新密碼不一致。") if role == "student" else "兩次輸入的新密碼不一致。")
+                    st.error("兩次輸入的新密碼不一致。")
                 else:
                     try:
                         changed = admin.rpc("change_student_password", {
@@ -409,7 +409,7 @@ if role is None:
                         else:
                             st.error("座號或目前密碼錯誤，密碼未變更。")
                     except Exception:
-                        st.error(student_ui_text("password_general_error", "目前無法更改密碼，請稍後再試。") if role == "student" else "目前無法更改密碼，請稍後再試。")
+                        st.error("目前無法更改密碼，請稍後再試。")
     with admin_tab:
         st.subheader("管理員登入")
         username = st.text_input("管理員帳號", key="admin_user")
