@@ -645,6 +645,16 @@ if role == "student":
         "group_submit_error": "小組送出失敗，請稍後重試；若持續發生，請聯絡畢冊製作組。",
         "group_load_error": "小組組隊功能目前無法讀取資料，請稍後再試或聯絡畢冊製作組。",
         "personal_rules_title": "個人生活照繳交規範",
+        "roster_group_title": "**第 {group_no} 組**",
+        "roster_leader_prefix": "組長｜",
+        "roster_member_format": "{seat_no} 號｜{leader_prefix}{name}",
+        "roster_unassigned_member_format": "{seat_no} 號｜{name}",
+        "class_photo_date_label": "**拍攝日期：**",
+        "class_photo_time_label": "**集合時間：**",
+        "class_photo_location_label": "**集合地點：**",
+        "class_photo_clothing_label": "**服裝要求：**",
+        "class_photo_count_label": "**預計拍攝：**",
+        "group_photo_upload_error": "照片格式或大小不符合規定。",
     }
     try:
         saved_display_rows = admin.table("site_settings").select("setting_key, setting_value").execute().data
@@ -1576,6 +1586,16 @@ elif role == "admin":
                 "group_submit_error": "小組送出失敗，請稍後重試；若持續發生，請聯絡畢冊製作組。",
                 "group_load_error": "小組組隊功能目前無法讀取資料，請稍後再試或聯絡畢冊製作組。",
                 "personal_rules_title": "個人生活照繳交規範",
+                "roster_group_title": "**第 {group_no} 組**",
+                "roster_leader_prefix": "組長｜",
+                "roster_member_format": "{seat_no} 號｜{leader_prefix}{name}",
+                "roster_unassigned_member_format": "{seat_no} 號｜{name}",
+                "class_photo_date_label": "**拍攝日期：**",
+                "class_photo_time_label": "**集合時間：**",
+                "class_photo_location_label": "**集合地點：**",
+                "class_photo_clothing_label": "**服裝要求：**",
+                "class_photo_count_label": "**預計拍攝：**",
+                "group_photo_upload_error": "照片格式或大小不符合規定。",
             }
             saved_content = current_settings.get("student_page_content")
             saved_content = saved_content if isinstance(saved_content, dict) else {}
@@ -1662,6 +1682,35 @@ elif role == "admin":
           "personal_rules_title": "個人生活照須知標題"
 }
                 for key, label in content_labels.items():
+                    edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
+                st.markdown("#### 🧾 動態標籤與格式")
+                extra_content_labels = {
+          "roster_group_title": "分組標題格式",
+          "roster_leader_prefix": "組長標示文字",
+          "roster_member_format": "組員名單格式",
+          "roster_unassigned_member_format": "未分組名單格式",
+          "class_photo_date_label": "拍攝日期欄位標籤",
+          "class_photo_time_label": "集合時間欄位標籤",
+          "class_photo_location_label": "集合地點欄位標籤",
+          "class_photo_clothing_label": "服裝要求欄位標籤",
+          "class_photo_count_label": "拍攝張數欄位標籤",
+          "group_member_title": "組員名單標題格式",
+          "group_photo_title": "小組合照區塊標題",
+          "upload_file_error": "上傳檔案錯誤格式",
+          "upload_fail": "個人照片上傳失敗文字",
+          "upload_success": "個人照片上傳成功文字",
+          "announcement_published_at": "公告發布時間格式",
+          "group_leader_label": "組長資訊格式",
+          "group_joined": "已加入組別提示",
+          "group_photo_slot": "照片欄位標題格式",
+          "group_photo_choose": "選擇照片欄位文字",
+          "group_photo_upload": "照片上傳按鈕文字",
+          "group_photo_success": "小組照片成功文字",
+          "group_photo_fail": "小組照片失敗文字",
+          "group_success": "組隊成功提示格式",
+          "group_photo_upload_error": "照片格式錯誤提示"
+}
+                for key, label in extra_content_labels.items():
                     edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
                 save_content = st.form_submit_button("儲存內容設定", type="primary")
             if save_content:
