@@ -732,11 +732,11 @@ if role == "student":
     if "show_class_group_photo" in student_tab_map:
         with student_tab_map["show_class_group_photo"]:
             st.subheader(student_content["class_photo_title"])
-            st.markdown(f"**拍攝日期：** {student_content['class_photo_date']}")
-            st.markdown(f"**集合時間：** {student_content['class_photo_time']}")
-            st.markdown(f"**集合地點：** {student_content['class_photo_location']}")
-            st.markdown(f"**服裝要求：** {student_content['class_photo_clothing']}")
-            st.markdown(f"**預計拍攝：** {student_content['class_photo_count']}")
+            st.markdown(f"{student_content['class_photo_date_label']} {student_content['class_photo_date']}")
+            st.markdown(f"{student_content['class_photo_time_label']} {student_content['class_photo_time']}")
+            st.markdown(f"{student_content['class_photo_location_label']} {student_content['class_photo_location']}")
+            st.markdown(f"{student_content['class_photo_clothing_label']} {student_content['class_photo_clothing']}")
+            st.markdown(f"{student_content['class_photo_count_label']} {student_content['class_photo_count']}")
             st.markdown(student_content["class_photo_actions_label"])
             st.markdown(student_content["class_photo_actions"])
             st.warning(student_content["class_photo_notice"])
@@ -773,14 +773,14 @@ if role == "student":
                         st.markdown(f"### {' '.join(flags)}")
                         st.markdown(f"**{notice['title']}**")
                         st.write(notice["content"])
-                        st.caption(f"發布時間：{notice['publish_at'][:16].replace('T', ' ')}")
+                        st.caption(student_content["announcement_published_at"].format(published_at=notice['publish_at'][:16].replace('T', ' ')))
             except Exception:
                 st.error(student_content["announcements_error"])
     if "show_group_signup" in student_tab_map:
         with student_tab_map["show_group_signup"]:
             st.subheader(student_content["group_signup_title"])
             st.info(student_content["group_notice"])
-            st.write(f"組長：**{identity['seat_no']} 號｜{identity['name']}**")
+            st.write(student_content["group_leader_label"].format(seat_no=identity['seat_no'], name=identity['name']))
             st.caption(student_content["group_signup_caption"])
             try:
                 my_group_rows = (
