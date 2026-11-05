@@ -807,8 +807,8 @@ if role == "student":
                     display_leader_id = display_leader_rows[0]["leader_student_id"] if display_leader_rows else None
                     st.markdown(student_content["group_member_title"].format(group_no=my_group_no))
                     for member in member_rows:
-                        leader_prefix = "組長｜" if member.get("student_id") == display_leader_id else ""
-                        st.write(f"{member['seat_no']} 號｜{leader_prefix}{member['student_name']}")
+                        leader_prefix = student_content["roster_leader_prefix"] if member.get("student_id") == display_leader_id else ""
+                        st.write(student_content["roster_member_format"].format(seat_no=member['seat_no'], leader_prefix=leader_prefix, name=member['student_name']))
 
                     st.divider()
                     st.markdown(student_content["group_photo_title"])
@@ -858,7 +858,7 @@ if role == "student":
                                     ):
                                         photo_data, photo_mime, photo_error = image_info(chosen_photo)
                                         if photo_error:
-                                            st.error(photo_error)
+                                            st.error(student_content["group_photo_upload_error"])
                                         else:
                                             extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[photo_mime]
                                             new_path = f"shoot_groups/{my_group_no}/{slot}_{uuid.uuid4().hex}.{extension}"
@@ -1640,31 +1640,17 @@ elif role == "admin":
                     edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
                 st.markdown("#### 🧾 動態標籤與格式")
                 extra_content_labels = {
-          "roster_group_title": "分組標題格式",
-          "roster_leader_prefix": "組長標示文字",
-          "roster_member_format": "組員名單格式",
-          "roster_unassigned_member_format": "未分組名單格式",
-          "class_photo_date_label": "拍攝日期欄位標籤",
-          "class_photo_time_label": "集合時間欄位標籤",
-          "class_photo_location_label": "集合地點欄位標籤",
-          "class_photo_clothing_label": "服裝要求欄位標籤",
-          "class_photo_count_label": "拍攝張數欄位標籤",
-          "group_member_title": "組員名單標題格式",
-          "group_photo_title": "小組合照區塊標題",
-          "upload_file_error": "上傳檔案錯誤格式",
-          "upload_fail": "個人照片上傳失敗文字",
-          "upload_success": "個人照片上傳成功文字",
-          "announcement_published_at": "公告發布時間格式",
-          "group_leader_label": "組長資訊格式",
-          "group_joined": "已加入組別提示",
-          "group_photo_slot": "照片欄位標題格式",
-          "group_photo_choose": "選擇照片欄位文字",
-          "group_photo_upload": "照片上傳按鈕文字",
-          "group_photo_success": "小組照片成功文字",
-          "group_photo_fail": "小組照片失敗文字",
-          "group_success": "組隊成功提示格式",
-          "group_photo_upload_error": "照片格式錯誤提示"
-}
+                    "roster_group_title": "分組標題格式",
+                    "roster_leader_prefix": "組長標示文字",
+                    "roster_member_format": "組員名單格式",
+                    "roster_unassigned_member_format": "未分組名單格式",
+                    "class_photo_date_label": "拍攝日期欄位標籤",
+                    "class_photo_time_label": "集合時間欄位標籤",
+                    "class_photo_location_label": "集合地點欄位標籤",
+                    "class_photo_clothing_label": "服裝要求欄位標籤",
+                    "class_photo_count_label": "拍攝張數欄位標籤",
+                    "group_photo_upload_error": "小組照片格式錯誤提示",
+                }
                 for key, label in extra_content_labels.items():
                     edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
                 save_content = st.form_submit_button("儲存內容設定", type="primary")
