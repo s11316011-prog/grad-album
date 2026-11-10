@@ -81,12 +81,40 @@ def save_google_drive_config(config):
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }, on_conflict="setting_key").execute()
 
+def save_google_oauth_pending_state(state):
+    # Persist OAuth state server-side so the callback still works if the
+    # browser opens a fresh Streamlit session during Google's redirect.
+    admin.table("site_settings").upsert({
+        "setting_key": "google_drive_oauth_pending_state",
+        "setting_value": {"state": state, "created_at": time.time()},
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, on_conflict="setting_key").execute()
+
+def consume_google_oauth_pending_state():
+    rows = (
+        admin.table("site_settings")
+        .select("setting_value")
+        .eq("setting_key", "google_drive_oauth_pending_state")
+        .limit(1).execute().data
+    )
+    pending = rows[0].get("setting_value") if rows else {}
+    # Remove the pending value before validating it: a callback is one-use.
+    admin.table("site_settings").delete().eq(
+        "setting_key", "google_drive_oauth_pending_state"
+    ).execute()
+    if not isinstance(pending, dict):
+        return None
+    created_at = pending.get("created_at")
+    if not isinstance(created_at, (int, float)) or time.time() - created_at > 600:
+        return None
+    return pending.get("state")
+
 def build_google_oauth_url():
     client_id = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip()
     if not client_id:
         raise RuntimeError("缺少 GOOGLE_OAUTH_CLIENT_ID")
     state = secrets.token_urlsafe(32)
-    st.session_state["google_drive_oauth_state"] = state
+    save_google_oauth_pending_state(state)
     from urllib.parse import urlencode
     params = {
         "client_id": client_id,
@@ -608,6 +636,51 @@ except Exception:
     student_access_paused = True
 
 role = current_role()
+
+# Handle Google's OAuth callback before the login gate. Streamlit may create a
+# fresh session when Google redirects back, so the one-time state is verified
+# against the server-side pending record rather than session_state.
+oauth_code = st.query_params.get("code")
+oauth_state = st.query_params.get("state")
+oauth_error = st.query_params.get("error")
+if oauth_code or oauth_error:
+    try:
+        expected_state = consume_google_oauth_pending_state()
+        if oauth_error:
+            raise RuntimeError("Google 授權未完成：" + str(oauth_error))
+        if not expected_state or not oauth_state or not hmac.compare_digest(
+            str(expected_state), str(oauth_state)
+        ):
+            raise RuntimeError("Google 授權驗證未通過，請重新開始連結。")
+        token_data = exchange_google_oauth_code(str(oauth_code))
+        refresh_token = token_data.get("refresh_token")
+        config = load_google_drive_config()
+        if refresh_token:
+            config["refresh_token_encrypted"] = _google_token_cipher().encrypt(
+                refresh_token.encode("utf-8")
+            ).decode("ascii")
+        elif not config.get("refresh_token_encrypted"):
+            raise RuntimeError("Google 沒有提供長期授權權杖，請重新連結並確認授權畫面。")
+        config["connected"] = True
+        save_google_drive_config(config)
+        st.session_state["google_drive_oauth_flash"] = (
+            "success", "Google 帳戶授權成功！請重新登入管理員，再選擇備份資料夾。"
+        )
+        st.session_state.pop("google_drive_access_token_cache", None)
+    except Exception as oauth_exc:
+        st.session_state["google_drive_oauth_flash"] = (
+            "error", "Google 授權處理失敗：" + str(oauth_exc)[:400]
+        )
+    finally:
+        st.query_params.clear()
+        st.rerun()
+
+oauth_flash = st.session_state.pop("google_drive_oauth_flash", None)
+if oauth_flash:
+    if oauth_flash[0] == "success":
+        st.success(oauth_flash[1])
+    else:
+        st.error(oauth_flash[1])
 
 if role == "student" and student_access_paused:
     st.warning("🔒 學生網站目前暫停開放")
@@ -1323,37 +1396,6 @@ elif role == "teacher":
             st.error("小組名單讀取失敗，請稍後再試。")
 
 elif role == "admin":
-    # OAuth 回呼只在已登入管理員的工作階段處理，並驗證一次性 state。
-    oauth_code = st.query_params.get("code")
-    oauth_state = st.query_params.get("state")
-    oauth_error = st.query_params.get("error")
-    if oauth_code or oauth_error:
-        expected_state = st.session_state.pop("google_drive_oauth_state", None)
-        try:
-            if oauth_error:
-                st.error("Google 授權未完成：" + str(oauth_error))
-            elif not expected_state or not oauth_state or not hmac.compare_digest(str(expected_state), str(oauth_state)):
-                st.error("Google 授權驗證未通過，請重新開始連結。")
-            else:
-                token_data = exchange_google_oauth_code(str(oauth_code))
-                refresh_token = token_data.get("refresh_token")
-                config = load_google_drive_config()
-                if refresh_token:
-                    config["refresh_token_encrypted"] = _google_token_cipher().encrypt(
-                        refresh_token.encode("utf-8")
-                    ).decode("ascii")
-                elif not config.get("refresh_token_encrypted"):
-                    raise RuntimeError("Google 沒有提供長期授權權杖，請重新連結並確認授權畫面。")
-                config["connected"] = True
-                save_google_drive_config(config)
-                st.session_state.pop("google_drive_access_token_cache", None)
-                st.success("Google 帳戶授權成功！接著請選擇備份資料夾。")
-        except Exception as oauth_exc:
-            st.error("Google 授權處理失敗：" + str(oauth_exc)[:400])
-        finally:
-            st.query_params.clear()
-            st.rerun()
-
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
     tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理", "👤 人員資料管理", "⚙️ 顯示設定", "☁️ Google Drive 備份"]
     if is_full_admin:
