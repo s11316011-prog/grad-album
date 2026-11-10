@@ -1458,13 +1458,25 @@ elif role == "admin":
             if not group_photo_rows:
                 st.info("目前尚無小組合照。")
             for group_photo in group_photo_rows:
-                p1, p2, p3 = st.columns([2, 3, 1])
+                p1, p2, p3, p4 = st.columns([2, 3, 1.2, 1.2])
                 p1.write(f"第 {group_photo['group_number']} 組｜第 {group_photo['photo_slot']} 張")
                 try:
                     p2.image(make_url(group_photo["storage_path"]), width=150)
                 except Exception:
                     p2.caption("預覽失敗")
-                if p3.button("刪除小組照", key=f"admin_group_photo_delete_{group_photo['group_number']}_{group_photo['photo_slot']}"):
+                try:
+                    group_photo_raw = admin.storage.from_(BUCKET).download(group_photo["storage_path"])
+                    p3.download_button(
+                        "下載小組照",
+                        data=group_photo_raw,
+                        file_name=group_photo["storage_path"].split("/")[-1],
+                        mime="image/jpeg",
+                        key=f"admin_group_photo_download_{group_photo['group_number']}_{group_photo['photo_slot']}",
+                        use_container_width=True,
+                    )
+                except Exception:
+                    p3.caption("下載失敗")
+                if p4.button("刪除小組照", key=f"admin_group_photo_delete_{group_photo['group_number']}_{group_photo['photo_slot']}"):
                     admin.storage.from_(BUCKET).remove([group_photo["storage_path"]])
                     admin.table("group_photos").delete().eq("group_number", group_photo["group_number"]).eq("photo_slot", group_photo["photo_slot"]).execute()
                     st.success("小組照片已刪除。")
