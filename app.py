@@ -201,12 +201,12 @@ def backup_group_photo_to_drive(group_number, slot, photo_data, mime_type, exten
     }
     boundary = "grad_album_" + uuid.uuid4().hex
     body = (
-        f"--{boundary}\\r\\n"
-        "Content-Type: application/json; charset=UTF-8\\r\\n\\r\\n"
+        f"--{boundary}\r\n"
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
         + json.dumps(metadata, ensure_ascii=False)
-        + f"\\r\\n--{boundary}\\r\\n"
-        + f"Content-Type: {mime_type}\\r\\n\\r\\n"
-    ).encode("utf-8") + photo_data + f"\\r\\n--{boundary}--".encode("ascii")
+        + f"\r\n--{boundary}\r\n"
+        + f"Content-Type: {mime_type}\r\n\r\n"
+    ).encode("utf-8") + photo_data + f"\r\n--{boundary}--".encode("ascii")
     return google_drive_api_request(
         "POST",
         "https://www.googleapis.com/upload/drive/v3/files",
@@ -2168,6 +2168,55 @@ elif role == "admin":
                     st.session_state.pop("google_drive_access_token_cache", None)
                     st.link_button("前往 Google 授權", build_google_oauth_url(), type="primary")
             st.caption("備份檔案會依組別建立子資料夾，並保留每次上傳的獨立版本。")
+            st.divider()
+            st.markdown("### 📦 手動備份現有小組照片")
+            st.caption("將目前 Supabase「小組合照」資料表中的照片補備份到 Google Drive；不會刪除或修改 Supabase 原始照片。")
+            manual_backup_disabled = not (drive_config.get("refresh_token_encrypted") and drive_config.get("folder_id"))
+            if st.button("☁️ 立即備份所有小組合照", key="google_drive_manual_backup", type="primary", use_container_width=True, disabled=manual_backup_disabled):
+                try:
+                    current_group_photos = (
+                        admin.table("group_photos")
+                        .select("group_number, photo_slot, storage_path")
+                        .order("group_number")
+                        .order("photo_slot")
+                        .execute().data
+                    )
+                    if not current_group_photos:
+                        st.info("目前沒有可備份的小組合照。")
+                    else:
+                        completed = 0
+                        failed = []
+                        progress = st.progress(0, text="準備備份小組合照…")
+                        total = len(current_group_photos)
+                        for index, photo_row in enumerate(current_group_photos, start=1):
+                            path = str(photo_row.get("storage_path") or "")
+                            try:
+                                raw_photo = admin.storage.from_(BUCKET).download(path)
+                                extension = path.rsplit(".", 1)[-1].lower() if "." in path else "jpg"
+                                mime_type = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(extension)
+                                if not mime_type:
+                                    raise RuntimeError("不支援的照片格式")
+                                backup_group_photo_to_drive(
+                                    photo_row["group_number"],
+                                    photo_row["photo_slot"],
+                                    raw_photo,
+                                    mime_type,
+                                    "jpg" if extension == "jpeg" else extension,
+                                    drive_config,
+                                )
+                                completed += 1
+                            except Exception:
+                                failed.append(f"第{photo_row.get('group_number')}組第{photo_row.get('photo_slot')}張")
+                            progress.progress(index / total, text=f"備份進度：{index}/{total}")
+                        progress.empty()
+                        if completed:
+                            st.success(f"完成備份 {completed} 張小組合照。")
+                        if failed:
+                            st.warning("以下照片備份失敗：" + "、".join(failed[:20]))
+                        if not failed:
+                            st.success("所有現有小組合照都已送往 Google Drive。")
+                except Exception as manual_backup_error:
+                    st.error("手動備份未完成：" + str(manual_backup_error)[:300])
         except Exception as drive_setup_error:
             st.error("Google Drive 設定讀取失敗：" + str(drive_setup_error)[:400])
 
