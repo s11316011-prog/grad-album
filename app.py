@@ -4,6 +4,10 @@ import hmac
 import base64
 import hashlib
 import secrets
+import json
+import time
+import requests
+from cryptography.fernet import Fernet
 from importlib.metadata import version
 from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
@@ -44,6 +48,255 @@ def get_clients(project_url: str, publishable_key: str, secret_key: str):
     return public_client, admin_client
 
 supabase, admin = get_clients(SUPABASE_URL, SUPABASE_KEY, SUPABASE_SECRET_KEY)
+
+
+# Google Drive 自動備份（僅管理員設定；Supabase 仍為主要儲存）
+GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
+GOOGLE_DRIVE_REDIRECT_URI = "https://grad-album-kesrpyzfdmctfq9k5psauu.streamlit.app/"
+
+def _google_token_cipher():
+    client_secret = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET", "")).strip()
+    if not client_secret:
+        raise RuntimeError("缺少 GOOGLE_OAUTH_CLIENT_SECRET")
+    derived_key = hashlib.sha256(
+        ("grad-album-google-drive-refresh-token-v1:" + client_secret).encode("utf-8")
+    ).digest()
+    from cryptography.fernet import Fernet
+    return Fernet(base64.urlsafe_b64encode(derived_key))
+
+def load_google_drive_config():
+    rows = (
+        admin.table("site_settings")
+        .select("setting_value")
+        .eq("setting_key", "google_drive_backup_config")
+        .limit(1).execute().data
+    )
+    value = rows[0].get("setting_value") if rows else {}
+    return value if isinstance(value, dict) else {}
+
+def save_google_drive_config(config):
+    admin.table("site_settings").upsert({
+        "setting_key": "google_drive_backup_config",
+        "setting_value": config,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, on_conflict="setting_key").execute()
+
+def build_google_oauth_url():
+    client_id = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip()
+    if not client_id:
+        raise RuntimeError("缺少 GOOGLE_OAUTH_CLIENT_ID")
+    state = secrets.token_urlsafe(32)
+    st.session_state["google_drive_oauth_state"] = state
+    from urllib.parse import urlencode
+    params = {
+        "client_id": client_id,
+        "redirect_uri": GOOGLE_DRIVE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": GOOGLE_DRIVE_SCOPE,
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+        "state": state,
+    }
+    return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+
+def exchange_google_oauth_code(code):
+    response = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip(),
+            "client_secret": str(st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET", "")).strip(),
+            "redirect_uri": GOOGLE_DRIVE_REDIRECT_URI,
+            "grant_type": "authorization_code",
+        },
+        timeout=25,
+    )
+    response.raise_for_status()
+    return response.json()
+
+def get_google_drive_access_token(config):
+    cached = st.session_state.get("google_drive_access_token_cache") or {}
+    if cached.get("access_token") and cached.get("expires_at", 0) > time.time() + 90:
+        return cached["access_token"]
+    encrypted_refresh = config.get("refresh_token_encrypted")
+    if not encrypted_refresh:
+        raise RuntimeError("尚未完成 Google 帳戶授權")
+    try:
+        refresh_token = _google_token_cipher().decrypt(encrypted_refresh.encode("ascii")).decode("utf-8")
+    except Exception as exc:
+        raise RuntimeError("Google 授權資料無法解密，請重新連結 Google 帳戶") from exc
+    response = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "client_id": str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip(),
+            "client_secret": str(st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET", "")).strip(),
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        },
+        timeout=25,
+    )
+    response.raise_for_status()
+    token_data = response.json()
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise RuntimeError("Google 未回傳存取權杖，請重新連結帳戶")
+    st.session_state["google_drive_access_token_cache"] = {
+        "access_token": access_token,
+        "expires_at": time.time() + int(token_data.get("expires_in", 3600)),
+    }
+    return access_token
+
+def google_drive_api_request(method, url, access_token, **kwargs):
+    headers = dict(kwargs.pop("headers", {}) or {})
+    headers["Authorization"] = "Bearer " + access_token
+    response = requests.request(method, url, headers=headers, timeout=45, **kwargs)
+    response.raise_for_status()
+    return response.json() if response.content else {}
+
+def ensure_google_group_folder(access_token, root_folder_id, group_number):
+    folder_name = f"第{int(group_number):02d}組"
+    query = (
+        f"'{root_folder_id}' in parents and "
+        f"name='{folder_name}' and "
+        "mimeType='application/vnd.google-apps.folder' and trashed=false"
+    )
+    result = google_drive_api_request(
+        "GET",
+        "https://www.googleapis.com/drive/v3/files",
+        access_token,
+        params={"q": query, "fields": "files(id,name)", "pageSize": 100},
+    )
+    folders = result.get("files", [])
+    if folders:
+        return folders[0]["id"]
+    created = google_drive_api_request(
+        "POST",
+        "https://www.googleapis.com/drive/v3/files",
+        access_token,
+        json={
+            "name": folder_name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [root_folder_id],
+        },
+        params={"fields": "id,name"},
+    )
+    return created["id"]
+
+def backup_group_photo_to_drive(group_number, slot, photo_data, mime_type, extension, config):
+    root_folder_id = str(config.get("folder_id", "")).strip()
+    if not root_folder_id:
+        raise RuntimeError("尚未選擇 Google Drive 備份資料夾")
+    access_token = get_google_drive_access_token(config)
+    group_folder_id = ensure_google_group_folder(access_token, root_folder_id, group_number)
+    taiwan_now = datetime.now(timezone(timedelta(hours=8)))
+    filename = (
+        f"第{int(group_number):02d}組_第{int(slot):02d}張_"
+        f"{taiwan_now.strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}.{extension}"
+    )
+    metadata = {
+        "name": filename,
+        "mimeType": mime_type,
+        "parents": [group_folder_id],
+    }
+    boundary = "grad_album_" + uuid.uuid4().hex
+    body = (
+        f"--{boundary}\\r\\n"
+        "Content-Type: application/json; charset=UTF-8\\r\\n\\r\\n"
+        + json.dumps(metadata, ensure_ascii=False)
+        + f"\\r\\n--{boundary}\\r\\n"
+        + f"Content-Type: {mime_type}\\r\\n\\r\\n"
+    ).encode("utf-8") + photo_data + f"\\r\\n--{boundary}--".encode("ascii")
+    return google_drive_api_request(
+        "POST",
+        "https://www.googleapis.com/upload/drive/v3/files",
+        access_token,
+        params={"uploadType": "multipart", "fields": "id,name,webViewLink"},
+        headers={"Content-Type": f"multipart/related; boundary={boundary}"},
+        data=body,
+    )
+
+@st.cache_resource
+def get_google_drive_folder_picker_component():
+    html = """
+    <div class="drive-picker-wrap">
+      <button id="drive-picker-open" type="button">📁 選擇 Google Drive 備份資料夾</button>
+      <div id="drive-picker-status" role="status">請選擇要存放畢冊照片備份的資料夾。</div>
+    </div>
+    """
+    css = """
+    .drive-picker-wrap { display:flex; flex-direction:column; gap:10px; font-family:var(--st-font); }
+    #drive-picker-open { border:1px solid var(--st-primary-color); border-radius:9px; padding:10px 14px; background:var(--st-secondary-background-color); color:var(--st-text-color); font-weight:600; cursor:pointer; }
+    #drive-picker-open:disabled { opacity:.6; cursor:wait; }
+    #drive-picker-status { color:var(--st-text-color); font-size:13px; }
+    """
+    js = """
+    export default function(component) {
+      const { parentElement, data, setStateValue } = component;
+      const button = parentElement.querySelector("#drive-picker-open");
+      const status = parentElement.querySelector("#drive-picker-status");
+      if (!button || button.dataset.bound === "1") return;
+      button.dataset.bound = "1";
+      button.onclick = async () => {
+        button.disabled = true;
+        status.textContent = "正在載入 Google Drive 選擇器…";
+        try {
+          if (!data?.access_token || !data?.api_key || !data?.project_number) {
+            throw new Error("Google Picker 設定不完整，請重新整理頁面。");
+          }
+          const loadPicker = () => new Promise((resolve, reject) => {
+            const load = () => {
+              if (!window.gapi?.load) return reject(new Error("Google API 載入失敗"));
+              window.gapi.load("picker", { callback: resolve, onerror: () => reject(new Error("Picker 載入失敗")) });
+            };
+            if (window.gapi?.load) return load();
+            const script = document.createElement("script");
+            script.src = "https://apis.google.com/js/api.js";
+            script.async = true;
+            script.onload = load;
+            script.onerror = () => reject(new Error("無法載入 Google API"));
+            document.head.appendChild(script);
+          });
+          await loadPicker();
+          const folderView = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+            .setIncludeFolders(true)
+            .setSelectFolderEnabled(true)
+            .setMimeTypes("application/vnd.google-apps.folder");
+          const picker = new google.picker.PickerBuilder()
+            .addView(folderView)
+            .setOAuthToken(data.access_token)
+            .setDeveloperKey(data.api_key)
+            .setAppId(String(data.project_number))
+            .setCallback((payload) => {
+              if (payload.action === google.picker.Action.PICKED && payload.docs?.length) {
+                const selected = payload.docs[0];
+                setStateValue("folder", {
+                  id: selected.id,
+                  name: selected.name || "已選擇的資料夾"
+                });
+                status.textContent = "已選取：" + (selected.name || "Google Drive 資料夾") + "，正在儲存設定…";
+              } else if (payload.action === google.picker.Action.CANCEL) {
+                status.textContent = "已取消選擇。";
+                button.disabled = false;
+              }
+            })
+            .build();
+          picker.setVisible(true);
+          button.disabled = false;
+          status.textContent = "請在 Google Drive 視窗中選擇資料夾。";
+        } catch (error) {
+          status.textContent = error?.message || "Google Picker 無法開啟，請稍後再試。";
+          button.disabled = false;
+        }
+      };
+    }
+    """
+    return st.components.v2.component(
+        name="google_drive_folder_picker",
+        html=html,
+        css=css,
+        js=js,
+    )
 
 st.markdown("""
 <style>
@@ -924,6 +1177,17 @@ if role == "student":
                                                 if old_path:
                                                     admin.storage.from_(BUCKET).remove([old_path])
                                                 st.success(student_content["group_photo_success"].format(slot=slot))
+                                                try:
+                                                    drive_config = load_google_drive_config()
+                                                    if drive_config.get("refresh_token_encrypted") and drive_config.get("folder_id"):
+                                                        drive_result = backup_group_photo_to_drive(
+                                                            my_group_no, slot, photo_data, photo_mime, extension, drive_config
+                                                        )
+                                                        st.success("☁️ Google Drive 備份成功：" + str(drive_result.get("name", "照片已備份")))
+                                                    else:
+                                                        st.warning("照片已安全存入 Supabase；Google Drive 尚未完成授權或資料夾設定，因此這次未備份。")
+                                                except Exception as drive_backup_error:
+                                                    st.warning("照片已安全存入 Supabase，但 Google Drive 備份未成功；不影響原照片。請管理員檢查備份設定。")
                                                 st.rerun()
                                             except Exception:
                                                 st.error(student_content["group_photo_fail"].format(slot=slot))
@@ -1059,13 +1323,45 @@ elif role == "teacher":
             st.error("小組名單讀取失敗，請稍後再試。")
 
 elif role == "admin":
+    # OAuth 回呼只在已登入管理員的工作階段處理，並驗證一次性 state。
+    oauth_code = st.query_params.get("code")
+    oauth_state = st.query_params.get("state")
+    oauth_error = st.query_params.get("error")
+    if oauth_code or oauth_error:
+        expected_state = st.session_state.pop("google_drive_oauth_state", None)
+        try:
+            if oauth_error:
+                st.error("Google 授權未完成：" + str(oauth_error))
+            elif not expected_state or not oauth_state or not hmac.compare_digest(str(expected_state), str(oauth_state)):
+                st.error("Google 授權驗證未通過，請重新開始連結。")
+            else:
+                token_data = exchange_google_oauth_code(str(oauth_code))
+                refresh_token = token_data.get("refresh_token")
+                config = load_google_drive_config()
+                if refresh_token:
+                    config["refresh_token_encrypted"] = _google_token_cipher().encrypt(
+                        refresh_token.encode("utf-8")
+                    ).decode("ascii")
+                elif not config.get("refresh_token_encrypted"):
+                    raise RuntimeError("Google 沒有提供長期授權權杖，請重新連結並確認授權畫面。")
+                config["connected"] = True
+                save_google_drive_config(config)
+                st.session_state.pop("google_drive_access_token_cache", None)
+                st.success("Google 帳戶授權成功！接著請選擇備份資料夾。")
+        except Exception as oauth_exc:
+            st.error("Google 授權處理失敗：" + str(oauth_exc)[:400])
+        finally:
+            st.query_params.clear()
+            st.rerun()
+
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理", "👤 人員資料管理", "⚙️ 顯示設定"]
+    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理", "👤 人員資料管理", "⚙️ 顯示設定", "☁️ Google Drive 備份"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
     group_tab, signup_tab, photo_tab, personnel_tab, display_settings_tab = created_tabs[:5]
-    staff_tab = created_tabs[5] if is_full_admin else None
+    drive_tab = created_tabs[5]
+    staff_tab = created_tabs[6] if is_full_admin else None
     with signup_tab:
         st.subheader("學生自行組隊結果")
         st.caption("學生由組長建立小組並一次送出；每位學生只能屬於一組。管理員可查看各組名單及尚未組隊的學生。")
@@ -1817,6 +2113,63 @@ elif role == "admin":
                                 st.rerun()
         except Exception:
             st.error("學生資料讀取或更新失敗，請確認資料表欄位及權限。")
+
+    with drive_tab:
+        st.subheader("☁️ Google Drive 自動備份")
+        st.caption("Supabase 仍是主要照片儲存位置；Google Drive 只保存額外備份。此設定只有管理員能操作。")
+        st.info("第一次使用請先連結 Google 帳戶，再選擇備份資料夾。網站會在每次小組合照成功存入 Supabase 後，自動備份到這個資料夾。")
+        try:
+            drive_config = load_google_drive_config()
+            if not drive_config.get("refresh_token_encrypted"):
+                st.warning("尚未連結 Google 帳戶。")
+                if st.button("🔗 開始連結 Google 帳戶", key="google_drive_start_oauth"):
+                    try:
+                        oauth_url = build_google_oauth_url()
+                        st.link_button("前往 Google 授權", oauth_url, type="primary")
+                        st.caption("請使用擁有備份資料夾的 Google 帳戶登入並同意 drive.file 權限。")
+                    except Exception as oauth_setup_error:
+                        st.error("無法開始 Google 授權：" + str(oauth_setup_error)[:300])
+            else:
+                st.success("Google 帳戶已完成授權。")
+                try:
+                    access_token_for_picker = get_google_drive_access_token(drive_config)
+                    picker_component = get_google_drive_folder_picker_component()
+                    picker_result = picker_component(
+                        data={
+                            "access_token": access_token_for_picker,
+                            "api_key": str(st.secrets.get("GOOGLE_PICKER_API_KEY", "")).strip(),
+                            "project_number": str(st.secrets.get("GOOGLE_CLOUD_PROJECT_NUMBER", "")).strip(),
+                        },
+                        default={"folder": None},
+                        on_folder_change=lambda: None,
+                        key="google_drive_folder_picker",
+                        height=90,
+                    )
+                    selected_folder = getattr(picker_result, "folder", None)
+                    if isinstance(selected_folder, dict) and selected_folder.get("id"):
+                        if selected_folder["id"] != drive_config.get("folder_id"):
+                            drive_config["folder_id"] = selected_folder["id"]
+                            drive_config["folder_name"] = selected_folder.get("name", "Google Drive 備份資料夾")
+                            save_google_drive_config(drive_config)
+                            st.success("備份資料夾已儲存：" + drive_config["folder_name"])
+                            st.rerun()
+                    if drive_config.get("folder_id"):
+                        st.success("目前備份位置：" + str(drive_config.get("folder_name") or "已選擇的資料夾"))
+                        st.caption("資料夾 ID 已安全儲存；不會公開顯示完整連結。")
+                    else:
+                        st.warning("尚未選擇備份資料夾。請按上方按鈕選擇。")
+                except Exception as picker_error:
+                    st.error("Google Drive 尚未準備完成：" + str(picker_error)[:400])
+                    if st.button("重新連結 Google 帳戶", key="google_drive_reauth"):
+                        st.session_state.pop("google_drive_access_token_cache", None)
+                        st.link_button("前往 Google 授權", build_google_oauth_url(), type="primary")
+                st.divider()
+                if st.button("🔄 重新授權 Google 帳戶", key="google_drive_force_reauth"):
+                    st.session_state.pop("google_drive_access_token_cache", None)
+                    st.link_button("前往 Google 授權", build_google_oauth_url(), type="primary")
+            st.caption("備份檔案會依組別建立子資料夾，並保留每次上傳的獨立版本。")
+        except Exception as drive_setup_error:
+            st.error("Google Drive 設定讀取失敗：" + str(drive_setup_error)[:400])
 
     if is_full_admin and staff_tab is not None:
         with staff_tab:
