@@ -181,7 +181,17 @@ def get_google_drive_access_token(config):
         },
         timeout=25,
     )
-    response.raise_for_status()
+    if not response.ok:
+        try:
+            oauth_error = response.json()
+        except Exception:
+            oauth_error = {}
+        error_code = str(oauth_error.get("error", "")).lower()
+        if error_code == "invalid_grant":
+            raise RuntimeError("Google Refresh Token 已失效或已撤銷，請重新連結 Google 帳戶。")
+        if error_code in ("invalid_client", "unauthorized_client"):
+            raise RuntimeError("Google OAuth 用戶端驗證失敗，請確認 Streamlit 的 Client ID 與 Client Secret 屬於同一個 OAuth Web Client。")
+        raise RuntimeError("Google 更新授權失敗（HTTP " + str(response.status_code) + "），請重新連結 Google 帳戶或檢查 OAuth 用戶端設定。")
     token_data = response.json()
     access_token = token_data.get("access_token")
     if not access_token:
