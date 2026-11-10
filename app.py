@@ -7,10 +7,14 @@ import secrets
 import json
 import time
 import requests
+import logging
 from cryptography.fernet import Fernet
 from importlib.metadata import version
 from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
+
+logger = logging.getLogger("grad_album.google_oauth")
+logger.setLevel(logging.INFO)
 
 st.set_page_config(
     page_title="116級國三一畢業紀念冊",
@@ -127,6 +131,7 @@ def build_google_oauth_url():
         raise RuntimeError("缺少 GOOGLE_OAUTH_CLIENT_ID")
     state = secrets.token_urlsafe(32)
     save_google_oauth_pending_state(state)
+    logger.info("Google OAuth: pending state saved to Supabase")
     from urllib.parse import urlencode
     params = {
         "client_id": client_id,
@@ -656,16 +661,21 @@ oauth_code = st.query_params.get("code")
 oauth_state = st.query_params.get("state")
 oauth_error = st.query_params.get("error")
 if oauth_code or oauth_error:
+    logger.info("Google OAuth: callback received; code_present=%s error_present=%s", bool(oauth_code), bool(oauth_error))
     try:
         expected_state = consume_google_oauth_pending_state()
+        logger.info("Google OAuth: pending state lookup completed; state_found=%s", bool(expected_state))
         if oauth_error:
             raise RuntimeError("Google 授權未完成：" + str(oauth_error))
         if not expected_state or not oauth_state or not hmac.compare_digest(
             str(expected_state), str(oauth_state)
         ):
             raise RuntimeError("Google 授權驗證未通過，請重新開始連結。")
+        logger.info("Google OAuth: state validation passed; exchanging authorization code")
         token_data = exchange_google_oauth_code(str(oauth_code))
+        logger.info("Google OAuth: authorization code exchange completed")
         refresh_token = token_data.get("refresh_token")
+        logger.info("Google OAuth: refresh token returned=%s", bool(refresh_token))
         config = load_google_drive_config()
         if refresh_token:
             config["refresh_token_encrypted"] = _google_token_cipher().encrypt(
@@ -675,11 +685,14 @@ if oauth_code or oauth_error:
             raise RuntimeError("Google 沒有提供長期授權權杖，請重新連結並確認授權畫面。")
         config["connected"] = True
         save_google_drive_config(config)
+        logger.info("Google OAuth: encrypted credentials saved to Supabase successfully")
         success_message = "Google 帳戶授權成功！請重新登入管理員，再選擇備份資料夾。"
         save_google_oauth_result("success", success_message)
+        logger.info("Google OAuth: callback completed successfully")
         st.session_state["google_drive_oauth_flash"] = ("success", success_message)
         st.session_state.pop("google_drive_access_token_cache", None)
     except Exception as oauth_exc:
+        logger.exception("Google OAuth: callback failed; exception_type=%s", type(oauth_exc).__name__)
         error_message = "Google 授權處理失敗：" + str(oauth_exc)[:400]
         try:
             save_google_oauth_result("error", error_message)
@@ -687,6 +700,7 @@ if oauth_code or oauth_error:
             pass
         st.session_state["google_drive_oauth_flash"] = ("error", error_message)
     finally:
+        logger.info("Google OAuth: clearing callback query parameters and rerunning app")
         st.query_params.clear()
         st.rerun()
 
