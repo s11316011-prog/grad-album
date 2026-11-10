@@ -56,7 +56,7 @@ supabase, admin = get_clients(SUPABASE_URL, SUPABASE_KEY, SUPABASE_SECRET_KEY)
 
 # Google Drive 自動備份（僅管理員設定；Supabase 仍為主要儲存）
 GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
-GOOGLE_DRIVE_REDIRECT_URI = "https://grad-album-kesrpyzfdmctfq9k5psauu.streamlit.app/"
+GOOGLE_DRIVE_REDIRECT_URI = "https://grad-album-kevza6xaafopua2faoaimw.streamlit.app/"
 
 def _google_token_cipher():
     client_secret = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET", "")).strip()
