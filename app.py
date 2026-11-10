@@ -109,6 +109,18 @@ def consume_google_oauth_pending_state():
         return None
     return pending.get("state")
 
+def save_google_oauth_result(status, message):
+    # Persist the callback result so it remains visible after a fresh Streamlit session.
+    admin.table("site_settings").upsert({
+        "setting_key": "google_drive_oauth_last_result",
+        "setting_value": {
+            "status": status,
+            "message": str(message)[:500],
+            "created_at": time.time(),
+        },
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, on_conflict="setting_key").execute()
+
 def build_google_oauth_url():
     client_id = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip()
     if not client_id:
@@ -663,14 +675,17 @@ if oauth_code or oauth_error:
             raise RuntimeError("Google 沒有提供長期授權權杖，請重新連結並確認授權畫面。")
         config["connected"] = True
         save_google_drive_config(config)
-        st.session_state["google_drive_oauth_flash"] = (
-            "success", "Google 帳戶授權成功！請重新登入管理員，再選擇備份資料夾。"
-        )
+        success_message = "Google 帳戶授權成功！請重新登入管理員，再選擇備份資料夾。"
+        save_google_oauth_result("success", success_message)
+        st.session_state["google_drive_oauth_flash"] = ("success", success_message)
         st.session_state.pop("google_drive_access_token_cache", None)
     except Exception as oauth_exc:
-        st.session_state["google_drive_oauth_flash"] = (
-            "error", "Google 授權處理失敗：" + str(oauth_exc)[:400]
-        )
+        error_message = "Google 授權處理失敗：" + str(oauth_exc)[:400]
+        try:
+            save_google_oauth_result("error", error_message)
+        except Exception:
+            pass
+        st.session_state["google_drive_oauth_flash"] = ("error", error_message)
     finally:
         st.query_params.clear()
         st.rerun()
@@ -2157,6 +2172,27 @@ elif role == "admin":
             st.error("學生資料讀取或更新失敗，請確認資料表欄位及權限。")
 
     with drive_tab:
+        # Show a persisted OAuth callback result after the admin signs in again.
+        try:
+            oauth_result_rows = (
+                admin.table("site_settings")
+                .select("setting_value")
+                .eq("setting_key", "google_drive_oauth_last_result")
+                .limit(1).execute().data
+            )
+            if oauth_result_rows:
+                oauth_result = oauth_result_rows[0].get("setting_value") or {}
+                result_age = time.time() - float(oauth_result.get("created_at", 0) or 0)
+                if result_age <= 86400:
+                    if oauth_result.get("status") == "success":
+                        st.success(str(oauth_result.get("message") or "Google 授權成功。"))
+                    else:
+                        st.error(str(oauth_result.get("message") or "Google 授權失敗，未取得詳細原因。"))
+                admin.table("site_settings").delete().eq(
+                    "setting_key", "google_drive_oauth_last_result"
+                ).execute()
+        except Exception:
+            st.warning("目前無法讀取 Google 授權診斷結果，請稍後再試。")
         st.subheader("☁️ Google Drive 自動備份")
         st.caption("Supabase 仍是主要照片儲存位置；Google Drive 只保存額外備份。此設定只有管理員能操作。")
         st.info("第一次使用請先連結 Google 帳戶，再選擇備份資料夾。網站會在每次小組合照成功存入 Supabase 後，自動備份到這個資料夾。")
