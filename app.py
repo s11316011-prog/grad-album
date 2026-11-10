@@ -146,18 +146,37 @@ def build_google_oauth_url():
     return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
 
 def exchange_google_oauth_code(code):
+    client_id = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip()
+    client_secret = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET", "")).strip()
+    if not client_id or not client_secret:
+        raise RuntimeError("缺少 Google OAuth Client ID 或 Client Secret，請檢查 Streamlit Secrets。")
     response = requests.post(
         "https://oauth2.googleapis.com/token",
         data={
             "code": code,
-            "client_id": str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip(),
-            "client_secret": str(st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET", "")).strip(),
+            "client_id": client_id,
+            "client_secret": client_secret,
             "redirect_uri": GOOGLE_DRIVE_REDIRECT_URI,
             "grant_type": "authorization_code",
         },
         timeout=25,
     )
-    response.raise_for_status()
+    if not response.ok:
+        try:
+            oauth_error = response.json()
+        except Exception:
+            oauth_error = {}
+        error_code = str(oauth_error.get("error", "")).lower()
+        error_detail = str(oauth_error.get("error_description", "")).strip()
+        if error_code == "invalid_client":
+            raise RuntimeError("Google 拒絕 OAuth 用戶端：Client ID 與 Client Secret 不相符，請確認兩者來自同一個 Web Client。")
+        if error_code == "redirect_uri_mismatch":
+            raise RuntimeError("Google OAuth 回呼網址不相符，請確認 Google Cloud 的已授權重新導向 URI 與網站設定完全一致。")
+        if error_code == "invalid_grant":
+            raise RuntimeError("Google 授權碼已過期或已使用，請重新按「重新授權」並在新視窗完成流程。")
+        if error_code:
+            raise RuntimeError("Google 交換授權碼失敗：" + error_code + (("（" + error_detail[:180] + "）") if error_detail else ""))
+        raise RuntimeError("Google 交換授權碼失敗（HTTP " + str(response.status_code) + "）。")
     return response.json()
 
 def get_google_drive_access_token(config):
@@ -691,13 +710,15 @@ if oauth_code or oauth_error:
         logger.info("Google OAuth: authorization code exchange completed")
         refresh_token = token_data.get("refresh_token")
         logger.info("Google OAuth: refresh token returned=%s", bool(refresh_token))
+        if not refresh_token:
+            raise RuntimeError("Google 這次沒有提供新的 Refresh Token，因此沒有覆蓋原有授權資料。請重新按「重新授權 Google 帳戶」，並在 Google 授權頁面確認使用正確帳戶及同意權限。")
         config = load_google_drive_config()
-        if refresh_token:
-            config["refresh_token_encrypted"] = _google_token_cipher().encrypt(
-                refresh_token.encode("utf-8")
-            ).decode("ascii")
-        elif not config.get("refresh_token_encrypted"):
-            raise RuntimeError("Google 沒有提供長期授權權杖，請重新連結並確認授權畫面。")
+        # Always replace the old encrypted token after a successful fresh consent.
+        # The encryption key is derived from the current OAuth client secret, so
+        # an old token encrypted with a previous secret must never be retained.
+        config["refresh_token_encrypted"] = _google_token_cipher().encrypt(
+            refresh_token.encode("utf-8")
+        ).decode("ascii")
         config["connected"] = True
         save_google_drive_config(config)
         logger.info("Google OAuth: encrypted credentials saved to Supabase successfully")
@@ -2273,7 +2294,11 @@ elif role == "admin":
                 st.divider()
                 if st.button("🔄 重新授權 Google 帳戶", key="google_drive_force_reauth"):
                     st.session_state.pop("google_drive_access_token_cache", None)
-                    st.link_button("前往 Google 授權", build_google_oauth_url(), type="primary")
+                    try:
+                        reauth_url = build_google_oauth_url()
+                        st.link_button("前往 Google 授權", reauth_url, type="primary")
+                    except Exception as reauth_error:
+                        st.error("無法開始重新授權：" + str(reauth_error)[:300])
             st.caption("備份檔案會依組別建立子資料夾，並保留每次上傳的獨立版本。")
             st.divider()
             st.markdown("### 📦 手動備份現有小組照片")
