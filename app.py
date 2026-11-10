@@ -286,8 +286,13 @@ def get_google_drive_folder_picker_component():
         button.disabled = true;
         status.textContent = "正在載入 Google Drive 選擇器…";
         try {
-          if (!data?.access_token || !data?.api_key || !data?.project_number) {
-            throw new Error("Google Picker 設定不完整，請重新整理頁面。");
+          const missingPickerConfig = [
+            !data?.access_token ? "Google 存取權杖" : null,
+            !data?.api_key ? "Picker API Key" : null,
+            !data?.project_number ? "Google Cloud 專案編號" : null,
+          ].filter(Boolean);
+          if (missingPickerConfig.length) {
+            throw new Error("Google Picker 缺少設定：" + missingPickerConfig.join("、") + "。請回報這段提示，不需要提供任何金鑰。");
           }
           const loadPicker = () => new Promise((resolve, reject) => {
             const load = () => {
