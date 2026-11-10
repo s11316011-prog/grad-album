@@ -364,21 +364,71 @@ if role == "student" and student_access_paused:
 if role is None:
     student_tab, admin_tab = st.tabs(["學生登入", "管理員登入"])
     with student_tab:
-        st.markdown(
-            """
-            <div style="max-width:760px;margin:2rem auto;padding:2rem 1.5rem;
-                        background:#ffffff;border:1px solid #c7d9e9;border-radius:18px;
-                        text-align:center;box-shadow:0 4px 18px rgba(40,80,120,.06);">
-              <div style="font-size:2.4rem;margin-bottom:.5rem;">🔒</div>
-              <h2 style="color:#173b61;margin:.2rem 0 1rem;">本網站已關閉</h2>
-              <p style="color:#58738e;font-size:1rem;line-height:1.8;margin:0;">
-                116級國三一畢業紀念冊網站已停止對外開放。<br>
-                感謝曾經使用本網站，相關資料將保留封存。
-              </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        if student_access_paused:
+            st.warning("🔒 學生網站目前暫停開放")
+            st.info("畢業紀念冊網站目前暫停學生登入及使用；管理員仍可正常登入與管理。")
+        else:
+            st.subheader("學生個人專區")
+            seat = st.text_input("帳號（請輸入座號）", key="student_seat")
+            password = st.text_input("個人專屬密碼", type="password", key="student_pwd")
+            if st.button("登入", type="primary", use_container_width=True):
+                if not seat.strip() or not password:
+                    st.warning("請輸入座號及個人密碼。")
+                else:
+                    try:
+                        student = verify_student(seat, password)
+                        if student:
+                            set_session("student", {
+                                "id": student["id"],
+                                "seat_no": str(student["seat_no"]),
+                                "name": student["name"],
+                            })
+                            st.rerun()
+                        else:
+                            st.error("座號或密碼錯誤。")
+                    except Exception as e:
+                        st.error("登入驗證發生系統錯誤，正在區分資料庫 API 與登入 RPC 問題。")
+                        st.code(f"登入 RPC：{type(e).__name__}: {e}")
+                        try:
+                            admin.table("grad_album").select("id").limit(1).execute()
+                            st.success("診斷結果：一般資料表 API 可正常連線；問題集中在登入 RPC 請求。")
+                        except Exception as api_error:
+                            st.error("診斷結果：一般資料表 API 也無法連線。")
+                            st.code(f"資料表 API：{type(api_error).__name__}: {api_error}")
+                        st.caption("此診斷只讀取一筆資料的 id，不會顯示或修改學生個資、密碼或照片。")
+                        st.markdown("**連線設定診斷（不含任何金鑰）**")
+                        st.code(
+                            f"SUPABASE_URL = {SUPABASE_URL!r}\\n"
+                            f"REST endpoint = {getattr(admin, 'rest_url', 'SDK 未提供 rest_url 屬性')!r}\\n"
+                            f"supabase package = {version('supabase')}\\n"
+                            f"postgrest package = {version('postgrest')}"
+                        )
+            with st.expander("🔐 更改學生密碼"):
+                st.caption("請輸入座號及目前密碼驗證身分；新密碼至少 8 個字元。")
+                change_seat = st.text_input("學生座號", key="student_change_seat")
+                old_student_pwd = st.text_input("目前密碼", type="password", key="student_old_pwd")
+                new_student_pwd = st.text_input("新密碼（至少 8 個字元）", type="password", key="student_new_pwd")
+                confirm_student_pwd = st.text_input("再次輸入新密碼", type="password", key="student_confirm_pwd")
+                if st.button("確認更改學生密碼", key="student_change_pwd_button", use_container_width=True):
+                    if not all([change_seat.strip(), old_student_pwd, new_student_pwd, confirm_student_pwd]):
+                        st.warning("請完整填寫所有欄位。")
+                    elif len(new_student_pwd) < 8 or len(new_student_pwd) > 128:
+                        st.warning("新密碼長度需為 8～128 個字元。")
+                    elif new_student_pwd != confirm_student_pwd:
+                        st.error("兩次輸入的新密碼不一致。")
+                    else:
+                        try:
+                            changed = admin.rpc("change_student_password", {
+                                "input_seat_no": change_seat.strip(),
+                                "input_old_password": old_student_pwd,
+                                "input_new_password": new_student_pwd,
+                            }).execute().data
+                            if changed is True:
+                                st.success("學生密碼已更新，請使用新密碼登入。")
+                            else:
+                                st.error("座號或目前密碼錯誤，密碼未變更。")
+                        except Exception:
+                            st.error("目前無法更改密碼，請稍後再試。")
     with admin_tab:
         st.subheader("管理員登入")
         username = st.text_input("管理員帳號", key="admin_user")
