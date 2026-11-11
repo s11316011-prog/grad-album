@@ -2411,17 +2411,20 @@ elif role == "admin":
                         st.warning("尚未選擇備份資料夾。請按上方按鈕選擇。")
                 except Exception as picker_error:
                     st.error("Google Drive 尚未準備完成：" + str(picker_error)[:400])
-                    if st.button("重新連結 Google 帳戶", key="google_drive_reauth"):
-                        st.session_state.pop("google_drive_access_token_cache", None)
-                        st.link_button("前往 Google 授權", build_google_oauth_url(), type="primary")
                 st.divider()
-                if st.button("🔄 重新授權 Google 帳戶", key="google_drive_force_reauth"):
-                    st.session_state.pop("google_drive_access_token_cache", None)
-                    try:
-                        reauth_url = build_google_oauth_url()
-                        st.link_button("前往 Google 授權", reauth_url, type="primary")
-                    except Exception as reauth_error:
-                        st.error("無法開始重新授權：" + str(reauth_error)[:300])
+                # Render the OAuth link directly. A link button nested inside a
+                # st.button callback is easy to miss on mobile and disappears on
+                # the next rerun, making reauthorization appear unresponsive.
+                try:
+                    st.link_button(
+                        "🔄 重新授權 Google 帳戶",
+                        build_google_oauth_url(),
+                        type="primary",
+                        use_container_width=True,
+                    )
+                    st.caption("請在 Google 頁面選擇擁有原備份資料夾的帳戶；原資料夾 ID 會保留。")
+                except Exception as reauth_error:
+                    st.error("無法開始重新授權：" + str(reauth_error)[:300])
             st.caption("備份檔案會依組別建立子資料夾，並保留每次上傳的獨立版本。")
             st.divider()
             st.markdown("### 📦 手動備份現有小組照片")
