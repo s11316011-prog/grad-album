@@ -1,20 +1,13 @@
 import streamlit as st
 import uuid
-import hmac
 import base64
 import hashlib
 import secrets
 import json
 import time
-import requests
-import logging
-from cryptography.fernet import Fernet
 from importlib.metadata import version
 from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
-
-logger = logging.getLogger("grad_album.google_oauth")
-logger.setLevel(logging.INFO)
 
 st.set_page_config(
     page_title="116級國三一畢業紀念冊",
@@ -53,392 +46,6 @@ def get_clients(project_url: str, publishable_key: str, secret_key: str):
 
 supabase, admin = get_clients(SUPABASE_URL, SUPABASE_KEY, SUPABASE_SECRET_KEY)
 
-
-# Google Drive 自動備份（僅管理員設定；Supabase 仍為主要儲存）
-GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
-GOOGLE_DRIVE_REDIRECT_URI = "https://grad-album-kevza6xaafopua2faoaimw.streamlit.app/"
-
-def _google_token_cipher():
-    # Keep token encryption independent from Google's OAuth client secret.
-    # Rotating the OAuth secret must not make previously saved Drive tokens
-    # undecryptable. Use the server-only Supabase service secret as key material.
-    key_material = str(st.secrets.get("SUPABASE_SECRET_KEY", "")).strip()
-    if not key_material:
-        raise RuntimeError("缺少 SUPABASE_SECRET_KEY，無法安全讀取 Google 授權資料")
-    derived_key = hashlib.sha256(
-        ("grad-album-google-drive-refresh-token-v2:" + key_material).encode("utf-8")
-    ).digest()
-    return Fernet(base64.urlsafe_b64encode(derived_key))
-
-def load_google_drive_config():
-    rows = (
-        admin.table("site_settings")
-        .select("setting_value")
-        .eq("setting_key", "google_drive_backup_config")
-        .limit(1).execute().data
-    )
-    value = rows[0].get("setting_value") if rows else {}
-    return value if isinstance(value, dict) else {}
-
-def save_google_drive_config(config):
-    admin.table("site_settings").upsert({
-        "setting_key": "google_drive_backup_config",
-        "setting_value": config,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }, on_conflict="setting_key").execute()
-
-def save_google_oauth_pending_state(state):
-    # Persist OAuth state server-side so the callback still works if the
-    # browser opens a fresh Streamlit session during Google's redirect.
-    admin.table("site_settings").upsert({
-        "setting_key": "google_drive_oauth_pending_state",
-        "setting_value": {"state": state, "created_at": time.time()},
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }, on_conflict="setting_key").execute()
-
-def consume_google_oauth_pending_state():
-    rows = (
-        admin.table("site_settings")
-        .select("setting_value")
-        .eq("setting_key", "google_drive_oauth_pending_state")
-        .limit(1).execute().data
-    )
-    pending = rows[0].get("setting_value") if rows else {}
-    # Remove the pending value before validating it: a callback is one-use.
-    admin.table("site_settings").delete().eq(
-        "setting_key", "google_drive_oauth_pending_state"
-    ).execute()
-    if not isinstance(pending, dict):
-        return None
-    created_at = pending.get("created_at")
-    if not isinstance(created_at, (int, float)) or time.time() - created_at > 600:
-        return None
-    return pending.get("state")
-
-def save_google_oauth_result(status, message):
-    # Persist the callback result so it remains visible after a fresh Streamlit session.
-    admin.table("site_settings").upsert({
-        "setting_key": "google_drive_oauth_last_result",
-        "setting_value": {
-            "status": status,
-            "message": str(message)[:500],
-            "created_at": time.time(),
-        },
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }, on_conflict="setting_key").execute()
-
-def build_google_oauth_url():
-    client_id = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip()
-    if not client_id:
-        raise RuntimeError("缺少 GOOGLE_OAUTH_CLIENT_ID")
-    state = secrets.token_urlsafe(32)
-    save_google_oauth_pending_state(state)
-    logger.info("Google OAuth: pending state saved to Supabase")
-    from urllib.parse import urlencode
-    params = {
-        "client_id": client_id,
-        "redirect_uri": GOOGLE_DRIVE_REDIRECT_URI,
-        "response_type": "code",
-        "scope": GOOGLE_DRIVE_SCOPE,
-        "access_type": "offline",
-        "prompt": "consent select_account",
-        "include_granted_scopes": "true",
-        "state": state,
-    }
-    return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
-
-def exchange_google_oauth_code(code):
-    client_id = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip()
-    client_secret = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET", "")).strip()
-    if not client_id or not client_secret:
-        raise RuntimeError("缺少 Google OAuth Client ID 或 Client Secret，請檢查 Streamlit Secrets。")
-    response = requests.post(
-        "https://oauth2.googleapis.com/token",
-        data={
-            "code": code,
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "redirect_uri": GOOGLE_DRIVE_REDIRECT_URI,
-            "grant_type": "authorization_code",
-        },
-        timeout=25,
-    )
-    if not response.ok:
-        try:
-            oauth_error = response.json()
-        except Exception:
-            oauth_error = {}
-        error_code = str(oauth_error.get("error", "")).lower()
-        error_detail = str(oauth_error.get("error_description", "")).strip()
-        if error_code == "invalid_client":
-            raise RuntimeError("Google 拒絕 OAuth 用戶端：Client ID 與 Client Secret 不相符，請確認兩者來自同一個 Web Client。")
-        if error_code == "redirect_uri_mismatch":
-            raise RuntimeError("Google OAuth 回呼網址不相符，請確認 Google Cloud 的已授權重新導向 URI 與網站設定完全一致。")
-        if error_code == "invalid_grant":
-            raise RuntimeError("Google 授權碼已過期或已使用，請重新按「重新授權」並在新視窗完成流程。")
-        if error_code:
-            raise RuntimeError("Google 交換授權碼失敗：" + error_code + (("（" + error_detail[:180] + "）") if error_detail else ""))
-        raise RuntimeError("Google 交換授權碼失敗（HTTP " + str(response.status_code) + "）。")
-    return response.json()
-
-def get_google_drive_access_token(config):
-    cached = st.session_state.get("google_drive_access_token_cache") or {}
-    if cached.get("access_token") and cached.get("expires_at", 0) > time.time() + 90:
-        return cached["access_token"]
-    encrypted_refresh = config.get("refresh_token_encrypted")
-    if not encrypted_refresh:
-        raise RuntimeError("尚未完成 Google 帳戶授權")
-    try:
-        refresh_token = _google_token_cipher().decrypt(encrypted_refresh.encode("ascii")).decode("utf-8")
-    except Exception as exc:
-        raise RuntimeError("Google 授權資料無法解密，請重新連結 Google 帳戶") from exc
-    response = requests.post(
-        "https://oauth2.googleapis.com/token",
-        data={
-            "client_id": str(st.secrets.get("GOOGLE_OAUTH_CLIENT_ID", "")).strip(),
-            "client_secret": str(st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET", "")).strip(),
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        },
-        timeout=25,
-    )
-    if not response.ok:
-        try:
-            oauth_error = response.json()
-        except Exception:
-            oauth_error = {}
-        error_code = str(oauth_error.get("error", "")).lower()
-        if error_code == "invalid_grant":
-            raise RuntimeError("Google Refresh Token 已失效或已撤銷，請重新連結 Google 帳戶。")
-        if error_code in ("invalid_client", "unauthorized_client"):
-            raise RuntimeError("Google OAuth 用戶端驗證失敗，請確認 Streamlit 的 Client ID 與 Client Secret 屬於同一個 OAuth Web Client。")
-        raise RuntimeError("Google 更新授權失敗（HTTP " + str(response.status_code) + "），請重新連結 Google 帳戶或檢查 OAuth 用戶端設定。")
-    token_data = response.json()
-    access_token = token_data.get("access_token")
-    if not access_token:
-        raise RuntimeError("Google 未回傳存取權杖，請重新連結帳戶")
-    st.session_state["google_drive_access_token_cache"] = {
-        "access_token": access_token,
-        "expires_at": time.time() + int(token_data.get("expires_in", 3600)),
-    }
-    return access_token
-
-def google_drive_api_request(method, url, access_token, **kwargs):
-    headers = dict(kwargs.pop("headers", {}) or {})
-    headers["Authorization"] = "Bearer " + access_token
-    response = requests.request(method, url, headers=headers, timeout=45, **kwargs)
-    response.raise_for_status()
-    return response.json() if response.content else {}
-
-def ensure_google_group_folder(access_token, root_folder_id, group_number):
-    folder_name = f"第{int(group_number):02d}組"
-    query = (
-        f"'{root_folder_id}' in parents and "
-        f"name='{folder_name}' and "
-        "mimeType='application/vnd.google-apps.folder' and trashed=false"
-    )
-    result = google_drive_api_request(
-        "GET",
-        "https://www.googleapis.com/drive/v3/files",
-        access_token,
-        params={"q": query, "fields": "files(id,name)", "pageSize": 100},
-    )
-    folders = result.get("files", [])
-    if folders:
-        return folders[0]["id"]
-    created = google_drive_api_request(
-        "POST",
-        "https://www.googleapis.com/drive/v3/files",
-        access_token,
-        json={
-            "name": folder_name,
-            "mimeType": "application/vnd.google-apps.folder",
-            "parents": [root_folder_id],
-        },
-        params={"fields": "id,name"},
-    )
-    return created["id"]
-
-def ensure_google_named_folder(access_token, root_folder_id, folder_name):
-    query = (
-        f"'{root_folder_id}' in parents and "
-        f"name='{folder_name}' and "
-        "mimeType='application/vnd.google-apps.folder' and trashed=false"
-    )
-    result = google_drive_api_request(
-        "GET",
-        "https://www.googleapis.com/drive/v3/files",
-        access_token,
-        params={"q": query, "fields": "files(id,name)", "pageSize": 100},
-    )
-    folders = result.get("files", [])
-    if folders:
-        return folders[0]["id"]
-    created = google_drive_api_request(
-        "POST",
-        "https://www.googleapis.com/drive/v3/files",
-        access_token,
-        json={
-            "name": folder_name,
-            "mimeType": "application/vnd.google-apps.folder",
-            "parents": [root_folder_id],
-        },
-        params={"fields": "id,name"},
-    )
-    return created["id"]
-
-def backup_class_photo_to_drive(seat_no, photo_data, mime_type, extension, config):
-    root_folder_id = str(config.get("folder_id", "")).strip()
-    if not root_folder_id:
-        raise RuntimeError("尚未選擇 Google Drive 備份資料夾")
-    access_token = get_google_drive_access_token(config)
-    class_folder_id = ensure_google_named_folder(access_token, root_folder_id, "全班照片")
-    taiwan_now = datetime.now(timezone(timedelta(hours=8)))
-    filename = (
-        f"{int(seat_no):02d}號_全班照片_{taiwan_now.strftime('%Y%m%d_%H%M%S')}_"
-        f"{uuid.uuid4().hex[:8]}.{extension}"
-    )
-    metadata = {
-        "name": filename,
-        "mimeType": mime_type,
-        "parents": [class_folder_id],
-    }
-    boundary = "grad_album_" + uuid.uuid4().hex
-    body = (
-        f"--{boundary}\\r\\n"
-        "Content-Type: application/json; charset=UTF-8\\r\\n\\r\\n"
-        + json.dumps(metadata, ensure_ascii=False)
-        + f"\\r\\n--{boundary}\\r\\n"
-        + f"Content-Type: {mime_type}\\r\\n\\r\\n"
-    ).encode("utf-8") + photo_data + f"\\r\\n--{boundary}--".encode("ascii")
-    return google_drive_api_request(
-        "POST",
-        "https://www.googleapis.com/upload/drive/v3/files",
-        access_token,
-        params={"uploadType": "multipart", "fields": "id,name,webViewLink"},
-        headers={"Content-Type": f"multipart/related; boundary={boundary}"},
-        data=body,
-    )
-
-def backup_group_photo_to_drive(group_number, slot, photo_data, mime_type, extension, config):
-    root_folder_id = str(config.get("folder_id", "")).strip()
-    if not root_folder_id:
-        raise RuntimeError("尚未選擇 Google Drive 備份資料夾")
-    access_token = get_google_drive_access_token(config)
-    group_folder_id = ensure_google_group_folder(access_token, root_folder_id, group_number)
-    taiwan_now = datetime.now(timezone(timedelta(hours=8)))
-    filename = (
-        f"第{int(group_number):02d}組_第{int(slot):02d}張_"
-        f"{taiwan_now.strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}.{extension}"
-    )
-    metadata = {
-        "name": filename,
-        "mimeType": mime_type,
-        "parents": [group_folder_id],
-    }
-    boundary = "grad_album_" + uuid.uuid4().hex
-    body = (
-        f"--{boundary}\r\n"
-        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
-        + json.dumps(metadata, ensure_ascii=False)
-        + f"\r\n--{boundary}\r\n"
-        + f"Content-Type: {mime_type}\r\n\r\n"
-    ).encode("utf-8") + photo_data + f"\r\n--{boundary}--".encode("ascii")
-    return google_drive_api_request(
-        "POST",
-        "https://www.googleapis.com/upload/drive/v3/files",
-        access_token,
-        params={"uploadType": "multipart", "fields": "id,name,webViewLink"},
-        headers={"Content-Type": f"multipart/related; boundary={boundary}"},
-        data=body,
-    )
-
-@st.cache_resource
-def get_google_drive_folder_picker_component():
-    html = """
-    <div class="drive-picker-wrap">
-      <button id="drive-picker-open" type="button">📁 選擇 Google Drive 備份資料夾</button>
-      <div id="drive-picker-status" role="status">請選擇要存放畢冊照片備份的資料夾。</div>
-    </div>
-    """
-    css = """
-    .drive-picker-wrap { display:flex; flex-direction:column; gap:10px; font-family:var(--st-font); }
-    #drive-picker-open { border:1px solid var(--st-primary-color); border-radius:9px; padding:10px 14px; background:var(--st-secondary-background-color); color:var(--st-text-color); font-weight:600; cursor:pointer; }
-    #drive-picker-open:disabled { opacity:.6; cursor:wait; }
-    #drive-picker-status { color:var(--st-text-color); font-size:13px; }
-    """
-    js = """
-    export default function(component) {
-      const { parentElement, data, setStateValue } = component;
-      const button = parentElement.querySelector("#drive-picker-open");
-      const status = parentElement.querySelector("#drive-picker-status");
-      if (!button || button.dataset.bound === "1") return;
-      button.dataset.bound = "1";
-      button.onclick = async () => {
-        button.disabled = true;
-        status.textContent = "正在載入 Google Drive 選擇器…";
-        try {
-          const missingPickerConfig = [
-            !data?.access_token ? "Google 存取權杖" : null,
-            !data?.api_key ? "Picker API Key" : null,
-            !data?.project_number ? "Google Cloud 專案編號" : null,
-          ].filter(Boolean);
-          if (missingPickerConfig.length) {
-            throw new Error("Google Picker 缺少設定：" + missingPickerConfig.join("、") + "。請回報這段提示，不需要提供任何金鑰。");
-          }
-          const loadPicker = () => new Promise((resolve, reject) => {
-            const load = () => {
-              if (!window.gapi?.load) return reject(new Error("Google API 載入失敗"));
-              window.gapi.load("picker", { callback: resolve, onerror: () => reject(new Error("Picker 載入失敗")) });
-            };
-            if (window.gapi?.load) return load();
-            const script = document.createElement("script");
-            script.src = "https://apis.google.com/js/api.js";
-            script.async = true;
-            script.onload = load;
-            script.onerror = () => reject(new Error("無法載入 Google API"));
-            document.head.appendChild(script);
-          });
-          await loadPicker();
-          const folderView = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
-            .setIncludeFolders(true)
-            .setSelectFolderEnabled(true)
-            .setMimeTypes("application/vnd.google-apps.folder");
-          const picker = new google.picker.PickerBuilder()
-            .addView(folderView)
-            .setOAuthToken(data.access_token)
-            .setDeveloperKey(data.api_key)
-            .setAppId(String(data.project_number))
-            .setCallback((payload) => {
-              if (payload.action === google.picker.Action.PICKED && payload.docs?.length) {
-                const selected = payload.docs[0];
-                setStateValue("folder", {
-                  id: selected.id,
-                  name: selected.name || "已選擇的資料夾"
-                });
-                status.textContent = "已選取：" + (selected.name || "Google Drive 資料夾") + "，正在儲存設定…";
-              } else if (payload.action === google.picker.Action.CANCEL) {
-                status.textContent = "已取消選擇。";
-                button.disabled = false;
-              }
-            })
-            .build();
-          picker.setVisible(true);
-          button.disabled = false;
-          status.textContent = "請在 Google Drive 視窗中選擇資料夾。";
-        } catch (error) {
-          status.textContent = error?.message || "Google Picker 無法開啟，請稍後再試。";
-          button.disabled = false;
-        }
-      };
-    }
-    """
-    return st.components.v2.component(
-        name="google_drive_folder_picker",
-        html=html,
-        css=css,
-        js=js,
-    )
 
 st.markdown("""
 <style>
@@ -761,65 +368,6 @@ except Exception:
     student_access_paused = True
 
 role = current_role()
-
-# Handle Google's OAuth callback before the login gate. Streamlit may create a
-# fresh session when Google redirects back, so the one-time state is verified
-# against the server-side pending record rather than session_state.
-oauth_code = st.query_params.get("code")
-oauth_state = st.query_params.get("state")
-oauth_error = st.query_params.get("error")
-if oauth_code or oauth_error:
-    logger.info("Google OAuth: callback received; code_present=%s error_present=%s", bool(oauth_code), bool(oauth_error))
-    try:
-        expected_state = consume_google_oauth_pending_state()
-        logger.info("Google OAuth: pending state lookup completed; state_found=%s", bool(expected_state))
-        if oauth_error:
-            raise RuntimeError("Google 授權未完成：" + str(oauth_error))
-        if not expected_state or not oauth_state or not hmac.compare_digest(
-            str(expected_state), str(oauth_state)
-        ):
-            raise RuntimeError("Google 授權驗證未通過，請重新開始連結。")
-        logger.info("Google OAuth: state validation passed; exchanging authorization code")
-        token_data = exchange_google_oauth_code(str(oauth_code))
-        logger.info("Google OAuth: authorization code exchange completed")
-        refresh_token = token_data.get("refresh_token")
-        logger.info("Google OAuth: refresh token returned=%s", bool(refresh_token))
-        if not refresh_token:
-            raise RuntimeError("Google 這次沒有提供新的 Refresh Token，因此沒有覆蓋原有授權資料。請重新按「重新授權 Google 帳戶」，並在 Google 授權頁面確認使用正確帳戶及同意權限。")
-        config = load_google_drive_config()
-        # Always replace the old encrypted token after a successful fresh consent.
-        # The encryption key is derived from the current OAuth client secret, so
-        # an old token encrypted with a previous secret must never be retained.
-        config["refresh_token_encrypted"] = _google_token_cipher().encrypt(
-            refresh_token.encode("utf-8")
-        ).decode("ascii")
-        config["connected"] = True
-        save_google_drive_config(config)
-        logger.info("Google OAuth: encrypted credentials saved to Supabase successfully")
-        success_message = "Google 帳戶授權成功！請重新登入管理員，再選擇備份資料夾。"
-        save_google_oauth_result("success", success_message)
-        logger.info("Google OAuth: callback completed successfully")
-        st.session_state["google_drive_oauth_flash"] = ("success", success_message)
-        st.session_state.pop("google_drive_access_token_cache", None)
-    except Exception as oauth_exc:
-        logger.exception("Google OAuth: callback failed; exception_type=%s", type(oauth_exc).__name__)
-        error_message = "Google 授權處理失敗：" + str(oauth_exc)[:400]
-        try:
-            save_google_oauth_result("error", error_message)
-        except Exception:
-            pass
-        st.session_state["google_drive_oauth_flash"] = ("error", error_message)
-    finally:
-        logger.info("Google OAuth: clearing callback query parameters and rerunning app")
-        st.query_params.clear()
-        st.rerun()
-
-oauth_flash = st.session_state.pop("google_drive_oauth_flash", None)
-if oauth_flash:
-    if oauth_flash[0] == "success":
-        st.success(oauth_flash[1])
-    else:
-        st.error(oauth_flash[1])
 
 if role == "student" and student_access_paused:
     st.warning("🔒 學生網站目前暫停開放")
@@ -1272,7 +820,6 @@ if role == "student":
                 disabled=not class_photo_files,
             ):
                 uploaded_count = 0
-                drive_backup_count = 0
                 for class_photo_file in class_photo_files or []:
                     photo_data, photo_mime, photo_error = image_info(class_photo_file)
                     if photo_error:
@@ -1286,21 +833,8 @@ if role == "student":
                     except Exception:
                         st.error(f"{class_photo_file.name}：上傳失敗，請稍後再試。")
                         continue
-                    try:
-                        drive_config = load_google_drive_config()
-                        if drive_config.get("refresh_token_encrypted") and drive_config.get("folder_id"):
-                            backup_class_photo_to_drive(
-                                identity["seat_no"], photo_data, photo_mime, extension, drive_config
-                            )
-                            drive_backup_count += 1
-                        else:
-                            st.warning("照片已存入網站資料庫；Google Drive 尚未完成授權或資料夾設定，這張照片暫未備份。")
-                    except Exception:
-                        st.warning("照片已存入網站資料庫，但 Google Drive 備份失敗；請管理員檢查 Google 授權設定。")
                 if uploaded_count:
                     st.success(f"已成功上傳 {uploaded_count} 張全班照片！")
-                    if drive_backup_count:
-                        st.success(f"☁️ 其中 {drive_backup_count} 張已同步備份到 Google Drive「全班照片」資料夾。")
                     st.rerun()
     if "show_student_announcements" in student_tab_map:
         with student_tab_map["show_student_announcements"]:
@@ -1437,17 +971,6 @@ if role == "student":
                                                 if old_path:
                                                     admin.storage.from_(BUCKET).remove([old_path])
                                                 st.success(student_content["group_photo_success"].format(slot=slot))
-                                                try:
-                                                    drive_config = load_google_drive_config()
-                                                    if drive_config.get("refresh_token_encrypted") and drive_config.get("folder_id"):
-                                                        drive_result = backup_group_photo_to_drive(
-                                                            my_group_no, slot, photo_data, photo_mime, extension, drive_config
-                                                        )
-                                                        st.success("☁️ Google Drive 備份成功：" + str(drive_result.get("name", "照片已備份")))
-                                                    else:
-                                                        st.warning("照片已安全存入 Supabase；Google Drive 尚未完成授權或資料夾設定，因此這次未備份。")
-                                                except Exception as drive_backup_error:
-                                                    st.warning("照片已安全存入 Supabase，但 Google Drive 備份未成功；不影響原照片。請管理員檢查備份設定。")
                                                 st.rerun()
                                             except Exception:
                                                 st.error(student_content["group_photo_fail"].format(slot=slot))
@@ -1587,13 +1110,12 @@ elif role == "teacher":
 
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理", "👤 人員資料管理", "⚙️ 顯示設定", "☁️ Google Drive 備份"]
+    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理", "👤 人員資料管理", "⚙️ 顯示設定"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
     group_tab, signup_tab, photo_tab, personnel_tab, display_settings_tab = created_tabs[:5]
-    drive_tab = created_tabs[5]
-    staff_tab = created_tabs[6] if is_full_admin else None
+    staff_tab = created_tabs[5] if is_full_admin else None
     with signup_tab:
         st.subheader("學生自行組隊結果")
         st.caption("學生由組長建立小組並一次送出；每位學生只能屬於一組。管理員可查看各組名單及尚未組隊的學生。")
@@ -2345,140 +1867,6 @@ elif role == "admin":
                                 st.rerun()
         except Exception:
             st.error("學生資料讀取或更新失敗，請確認資料表欄位及權限。")
-
-    with drive_tab:
-        # Show a persisted OAuth callback result after the admin signs in again.
-        try:
-            oauth_result_rows = (
-                admin.table("site_settings")
-                .select("setting_value")
-                .eq("setting_key", "google_drive_oauth_last_result")
-                .limit(1).execute().data
-            )
-            if oauth_result_rows:
-                oauth_result = oauth_result_rows[0].get("setting_value") or {}
-                result_age = time.time() - float(oauth_result.get("created_at", 0) or 0)
-                if result_age <= 86400:
-                    if oauth_result.get("status") == "success":
-                        st.success(str(oauth_result.get("message") or "Google 授權成功。"))
-                    else:
-                        st.error(str(oauth_result.get("message") or "Google 授權失敗，未取得詳細原因。"))
-                admin.table("site_settings").delete().eq(
-                    "setting_key", "google_drive_oauth_last_result"
-                ).execute()
-        except Exception:
-            st.warning("目前無法讀取 Google 授權診斷結果，請稍後再試。")
-        st.subheader("☁️ Google Drive 自動備份")
-        st.caption("Supabase 仍是主要照片儲存位置；Google Drive 只保存額外備份。此設定只有管理員能操作。")
-        st.info("第一次使用請先連結 Google 帳戶，再選擇備份資料夾。網站會在每次小組合照成功存入 Supabase 後，自動備份到這個資料夾。")
-        try:
-            drive_config = load_google_drive_config()
-            if not drive_config.get("refresh_token_encrypted"):
-                st.warning("尚未連結 Google 帳戶。")
-                if st.button("🔗 開始連結 Google 帳戶", key="google_drive_start_oauth"):
-                    try:
-                        oauth_url = build_google_oauth_url()
-                        st.link_button("前往 Google 授權", oauth_url, type="primary")
-                        st.caption("請使用擁有備份資料夾的 Google 帳戶登入並同意 drive.file 權限。")
-                    except Exception as oauth_setup_error:
-                        st.error("無法開始 Google 授權：" + str(oauth_setup_error)[:300])
-            else:
-                st.success("Google 帳戶已完成授權。")
-                try:
-                    access_token_for_picker = get_google_drive_access_token(drive_config)
-                    picker_component = get_google_drive_folder_picker_component()
-                    picker_result = picker_component(
-                        data={
-                            "access_token": access_token_for_picker,
-                            "api_key": str(st.secrets.get("GOOGLE_PICKER_API_KEY", "")).strip(),
-                            "project_number": str(st.secrets.get("GOOGLE_CLOUD_PROJECT_NUMBER", "")).strip(),
-                        },
-                        default={"folder": None},
-                        on_folder_change=lambda: None,
-                        key="google_drive_folder_picker",
-                        height=90,
-                    )
-                    selected_folder = getattr(picker_result, "folder", None)
-                    if isinstance(selected_folder, dict) and selected_folder.get("id"):
-                        if selected_folder["id"] != drive_config.get("folder_id"):
-                            drive_config["folder_id"] = selected_folder["id"]
-                            drive_config["folder_name"] = selected_folder.get("name", "Google Drive 備份資料夾")
-                            save_google_drive_config(drive_config)
-                            st.success("備份資料夾已儲存：" + drive_config["folder_name"])
-                            st.rerun()
-                    if drive_config.get("folder_id"):
-                        st.success("目前備份位置：" + str(drive_config.get("folder_name") or "已選擇的資料夾"))
-                        st.caption("資料夾 ID 已安全儲存；不會公開顯示完整連結。")
-                    else:
-                        st.warning("尚未選擇備份資料夾。請按上方按鈕選擇。")
-                except Exception as picker_error:
-                    st.error("Google Drive 尚未準備完成：" + str(picker_error)[:400])
-                st.divider()
-                # Render the OAuth link directly. A link button nested inside a
-                # st.button callback is easy to miss on mobile and disappears on
-                # the next rerun, making reauthorization appear unresponsive.
-                try:
-                    st.link_button(
-                        "🔄 重新授權 Google 帳戶",
-                        build_google_oauth_url(),
-                        type="primary",
-                        use_container_width=True,
-                    )
-                    st.caption("請在 Google 頁面選擇擁有原備份資料夾的帳戶；原資料夾 ID 會保留。")
-                except Exception as reauth_error:
-                    st.error("無法開始重新授權：" + str(reauth_error)[:300])
-            st.caption("備份檔案會依組別建立子資料夾，並保留每次上傳的獨立版本。")
-            st.divider()
-            st.markdown("### 📦 手動備份現有小組照片")
-            st.caption("將目前 Supabase「小組合照」資料表中的照片補備份到 Google Drive；不會刪除或修改 Supabase 原始照片。")
-            manual_backup_disabled = not (drive_config.get("refresh_token_encrypted") and drive_config.get("folder_id"))
-            if st.button("☁️ 立即備份所有小組合照", key="google_drive_manual_backup", type="primary", use_container_width=True, disabled=manual_backup_disabled):
-                try:
-                    current_group_photos = (
-                        admin.table("group_photos")
-                        .select("group_number, photo_slot, storage_path")
-                        .order("group_number")
-                        .order("photo_slot")
-                        .execute().data
-                    )
-                    if not current_group_photos:
-                        st.info("目前沒有可備份的小組合照。")
-                    else:
-                        completed = 0
-                        failed = []
-                        progress = st.progress(0, text="準備備份小組合照…")
-                        total = len(current_group_photos)
-                        for index, photo_row in enumerate(current_group_photos, start=1):
-                            path = str(photo_row.get("storage_path") or "")
-                            try:
-                                raw_photo = admin.storage.from_(BUCKET).download(path)
-                                extension = path.rsplit(".", 1)[-1].lower() if "." in path else "jpg"
-                                mime_type = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(extension)
-                                if not mime_type:
-                                    raise RuntimeError("不支援的照片格式")
-                                backup_group_photo_to_drive(
-                                    photo_row["group_number"],
-                                    photo_row["photo_slot"],
-                                    raw_photo,
-                                    mime_type,
-                                    "jpg" if extension == "jpeg" else extension,
-                                    drive_config,
-                                )
-                                completed += 1
-                            except Exception:
-                                failed.append(f"第{photo_row.get('group_number')}組第{photo_row.get('photo_slot')}張")
-                            progress.progress(index / total, text=f"備份進度：{index}/{total}")
-                        progress.empty()
-                        if completed:
-                            st.success(f"完成備份 {completed} 張小組合照。")
-                        if failed:
-                            st.warning("以下照片備份失敗：" + "、".join(failed[:20]))
-                        if not failed:
-                            st.success("所有現有小組合照都已送往 Google Drive。")
-                except Exception as manual_backup_error:
-                    st.error("手動備份未完成：" + str(manual_backup_error)[:300])
-        except Exception as drive_setup_error:
-            st.error("Google Drive 設定讀取失敗：" + str(drive_setup_error)[:400])
 
     if is_full_admin and staff_tab is not None:
         with staff_tab:
