@@ -625,15 +625,26 @@ def list_all_photos():
             continue
         if item.get("id") is not None:
             paths.append(name)
-        else:
-            # Folder entry; enumerate its immediate files.
-            try:
-                for child in storage.list(path=name, options={"limit": 500}):
-                    child_name = child.get("name", "")
-                    if child_name and child.get("id") is not None:
-                        paths.append(f"{name}/{child_name}")
-            except Exception:
-                continue
+            continue
+        try:
+            for child in storage.list(path=name, options={"limit": 500}):
+                child_name = child.get("name", "")
+                if not child_name:
+                    continue
+                child_path = f"{name}/{child_name}"
+                if child.get("id") is not None:
+                    paths.append(child_path)
+                    continue
+                # Include files in nested student folders such as class_photos/座號/.
+                try:
+                    for nested in storage.list(path=child_path, options={"limit": 500}):
+                        nested_name = nested.get("name", "")
+                        if nested_name and nested.get("id") is not None:
+                            paths.append(f"{child_path}/{nested_name}")
+                except Exception:
+                    continue
+        except Exception:
+            continue
     return sorted(set(paths))
 
 def get_groups():
@@ -1433,7 +1444,10 @@ elif role == "teacher":
             else:
                 st.write(f"目前共有 {len(student_paths)} 張學生照片")
                 for path in student_paths:
-                    seat_label = path.split("/", 1)[0] if "/" in path else path.split("_", 1)[0]
+                    if path.startswith("class_photos/"):
+                        seat_label = path.split("/", 2)[1]
+                    else:
+                        seat_label = path.split("/", 1)[0] if "/" in path else path.split("_", 1)[0]
                     with st.container(border=True):
                         st.caption(f"座號：{seat_label}")
                         try:
