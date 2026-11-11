@@ -257,6 +257,67 @@ def ensure_google_group_folder(access_token, root_folder_id, group_number):
     )
     return created["id"]
 
+def ensure_google_named_folder(access_token, root_folder_id, folder_name):
+    query = (
+        f"'{root_folder_id}' in parents and "
+        f"name='{folder_name}' and "
+        "mimeType='application/vnd.google-apps.folder' and trashed=false"
+    )
+    result = google_drive_api_request(
+        "GET",
+        "https://www.googleapis.com/drive/v3/files",
+        access_token,
+        params={"q": query, "fields": "files(id,name)", "pageSize": 100},
+    )
+    folders = result.get("files", [])
+    if folders:
+        return folders[0]["id"]
+    created = google_drive_api_request(
+        "POST",
+        "https://www.googleapis.com/drive/v3/files",
+        access_token,
+        json={
+            "name": folder_name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [root_folder_id],
+        },
+        params={"fields": "id,name"},
+    )
+    return created["id"]
+
+def backup_class_photo_to_drive(seat_no, photo_data, mime_type, extension, config):
+    root_folder_id = str(config.get("folder_id", "")).strip()
+    if not root_folder_id:
+        raise RuntimeError("尚未選擇 Google Drive 備份資料夾")
+    access_token = get_google_drive_access_token(config)
+    class_folder_id = ensure_google_named_folder(access_token, root_folder_id, "全班照片")
+    taiwan_now = datetime.now(timezone(timedelta(hours=8)))
+    filename = (
+        f"{int(seat_no):02d}號_全班照片_{taiwan_now.strftime('%Y%m%d_%H%M%S')}_"
+        f"{uuid.uuid4().hex[:8]}.{extension}"
+    )
+    metadata = {
+        "name": filename,
+        "mimeType": mime_type,
+        "parents": [class_folder_id],
+    }
+    boundary = "grad_album_" + uuid.uuid4().hex
+    body = (
+        f"--{boundary}\\r\\n"
+        "Content-Type: application/json; charset=UTF-8\\r\\n\\r\\n"
+        + json.dumps(metadata, ensure_ascii=False)
+        + f"\\r\\n--{boundary}\\r\\n"
+        + f"Content-Type: {mime_type}\\r\\n\\r\\n"
+    ).encode("utf-8") + photo_data + f"\\r\\n--{boundary}--".encode("ascii")
+    return google_drive_api_request(
+        "POST",
+        "https://www.googleapis.com/upload/drive/v3/files",
+        access_token,
+        params={"uploadType": "multipart", "fields": "id,name,webViewLink"},
+        headers={"Content-Type": f"multipart/related; boundary={boundary}"},
+        data=body,
+    )
+
 def backup_group_photo_to_drive(group_number, slot, photo_data, mime_type, extension, config):
     root_folder_id = str(config.get("folder_id", "")).strip()
     if not root_folder_id:
@@ -1209,6 +1270,7 @@ if role == "student":
                 disabled=not class_photo_files,
             ):
                 uploaded_count = 0
+                drive_backup_count = 0
                 for class_photo_file in class_photo_files or []:
                     photo_data, photo_mime, photo_error = image_info(class_photo_file)
                     if photo_error:
@@ -1221,8 +1283,22 @@ if role == "student":
                         uploaded_count += 1
                     except Exception:
                         st.error(f"{class_photo_file.name}：上傳失敗，請稍後再試。")
+                        continue
+                    try:
+                        drive_config = load_google_drive_config()
+                        if drive_config.get("refresh_token_encrypted") and drive_config.get("folder_id"):
+                            backup_class_photo_to_drive(
+                                identity["seat_no"], photo_data, photo_mime, extension, drive_config
+                            )
+                            drive_backup_count += 1
+                        else:
+                            st.warning("照片已存入網站資料庫；Google Drive 尚未完成授權或資料夾設定，這張照片暫未備份。")
+                    except Exception:
+                        st.warning("照片已存入網站資料庫，但 Google Drive 備份失敗；請管理員檢查 Google 授權設定。")
                 if uploaded_count:
                     st.success(f"已成功上傳 {uploaded_count} 張全班照片！")
+                    if drive_backup_count:
+                        st.success(f"☁️ 其中 {drive_backup_count} 張已同步備份到 Google Drive「全班照片」資料夾。")
                     st.rerun()
     if "show_student_announcements" in student_tab_map:
         with student_tab_map["show_student_announcements"]:
