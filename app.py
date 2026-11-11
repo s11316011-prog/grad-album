@@ -59,13 +59,15 @@ GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 GOOGLE_DRIVE_REDIRECT_URI = "https://grad-album-kevza6xaafopua2faoaimw.streamlit.app/"
 
 def _google_token_cipher():
-    client_secret = str(st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET", "")).strip()
-    if not client_secret:
-        raise RuntimeError("缺少 GOOGLE_OAUTH_CLIENT_SECRET")
+    # Keep token encryption independent from Google's OAuth client secret.
+    # Rotating the OAuth secret must not make previously saved Drive tokens
+    # undecryptable. Use the server-only Supabase service secret as key material.
+    key_material = str(st.secrets.get("SUPABASE_SECRET_KEY", "")).strip()
+    if not key_material:
+        raise RuntimeError("缺少 SUPABASE_SECRET_KEY，無法安全讀取 Google 授權資料")
     derived_key = hashlib.sha256(
-        ("grad-album-google-drive-refresh-token-v1:" + client_secret).encode("utf-8")
+        ("grad-album-google-drive-refresh-token-v2:" + key_material).encode("utf-8")
     ).digest()
-    from cryptography.fernet import Fernet
     return Fernet(base64.urlsafe_b64encode(derived_key))
 
 def load_google_drive_config():
@@ -139,7 +141,7 @@ def build_google_oauth_url():
         "response_type": "code",
         "scope": GOOGLE_DRIVE_SCOPE,
         "access_type": "offline",
-        "prompt": "consent",
+        "prompt": "consent select_account",
         "include_granted_scopes": "true",
         "state": state,
     }
