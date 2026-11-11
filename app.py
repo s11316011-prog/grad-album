@@ -1180,6 +1180,39 @@ if role == "student":
             st.markdown(student_content["class_photo_actions_label"])
             st.markdown(student_content["class_photo_actions"])
             st.warning(student_content["class_photo_notice"])
+
+            st.divider()
+            st.markdown("### 📤 全班照片上傳")
+            st.caption("所有已登入的同學都可以上傳全班團體照；照片會依座號分開保存，不會覆蓋個人生活照或小組合照。")
+            class_photo_files = st.file_uploader(
+                "選擇要上傳的全班照片（可一次選多張）",
+                type=["jpg", "jpeg", "png", "webp"],
+                accept_multiple_files=True,
+                key=f"class_photo_upload_files_{identity['id']}",
+                help="支援 JPG、PNG、WEBP；每張照片上限 10 MB。",
+            )
+            if st.button(
+                "📤 上傳全班照片",
+                type="primary",
+                key=f"class_photo_upload_button_{identity['id']}",
+                disabled=not class_photo_files,
+            ):
+                uploaded_count = 0
+                for class_photo_file in class_photo_files or []:
+                    photo_data, photo_mime, photo_error = image_info(class_photo_file)
+                    if photo_error:
+                        st.error(f"{class_photo_file.name}：{photo_error}")
+                        continue
+                    extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[photo_mime]
+                    class_photo_path = f"class_photos/{identity['seat_no']}/{uuid.uuid4().hex}.{extension}"
+                    try:
+                        upload_photo(class_photo_path, photo_data, photo_mime)
+                        uploaded_count += 1
+                    except Exception:
+                        st.error(f"{class_photo_file.name}：上傳失敗，請稍後再試。")
+                if uploaded_count:
+                    st.success(f"已成功上傳 {uploaded_count} 張全班照片！")
+                    st.rerun()
     if "show_student_announcements" in student_tab_map:
         with student_tab_map["show_student_announcements"]:
             st.subheader(student_content["tab_announcements"])
