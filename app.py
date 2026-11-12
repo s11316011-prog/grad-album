@@ -12,6 +12,8 @@ import streamlit.components.v1 as components
 from importlib.metadata import version
 from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 st.set_page_config(
     page_title="116級國三一畢業紀念冊",
@@ -53,6 +55,45 @@ def get_clients(project_url: str, publishable_key: str, secret_key: str):
     return public_client, admin_client
 
 supabase, admin = get_clients(SUPABASE_URL, SUPABASE_KEY, SUPABASE_SECRET_KEY)
+
+
+def get_google_drive_service():
+    raw_credentials = st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    if not raw_credentials:
+        raise RuntimeError("尚未設定 Google 服務帳號憑證")
+    if isinstance(raw_credentials, str):
+        credentials_info = json.loads(raw_credentials)
+    else:
+        credentials_info = dict(raw_credentials)
+    credentials = service_account.Credentials.from_service_account_info(
+        credentials_info,
+        scopes=["https://www.googleapis.com/auth/drive"],
+    )
+    return build("drive", "v3", credentials=credentials, cache_discovery=False)
+
+
+def ensure_drive_folder(service, parent_id, folder_name):
+    safe_name = folder_name.replace("\\", "\\\\").replace("'", "\\'")
+    query = (
+        f"'{parent_id}' in parents and name = '{safe_name}' "
+        "and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    )
+    result = service.files().list(
+        q=query, spaces="drive", pageSize=100,
+        fields="files(id,name,mimeType)"
+    ).execute()
+    existing = result.get("files", [])
+    if existing:
+        return existing[0]["id"], False
+    created = service.files().create(
+        body={
+            "name": folder_name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_id],
+        },
+        fields="id,name",
+    ).execute()
+    return created["id"], True
 
 
 st.markdown("""
@@ -1277,6 +1318,51 @@ elif role == "admin":
                         st.rerun()
                     except Exception:
                         st.error("備份資料夾設定暫時無法儲存，請稍後重新整理再試。")
+
+            if st.button("🧪 驗證資料夾權限並建立備份目錄", use_container_width=True, key="verify_and_create_drive_backup_folders"):
+                try:
+                    service = get_google_drive_service()
+                    parent_id = backup_target.get("folder_id", "")
+                    if not parent_id:
+                        raise RuntimeError("請先選定 Google Drive 備份資料夾")
+                    parent = service.files().get(
+                        fileId=parent_id,
+                        fields="id,name,mimeType,capabilities(canAddChildren)",
+                    ).execute()
+                    if parent.get("mimeType") != "application/vnd.google-apps.folder":
+                        raise RuntimeError("指定的 Google Drive 項目不是資料夾")
+                    if not parent.get("capabilities", {}).get("canAddChildren", False):
+                        raise RuntimeError("服務帳號沒有此資料夾的新增子資料夾權限，請確認已分享給服務帳號且權限為編輯者")
+                    root_id, root_created = ensure_drive_folder(service, parent_id, "畢業紀念冊照片總備份")
+                    folder_names = ["01_個人生活照", "02_小組合照", "03_班級團體照", "04_公告圖片", "05_備份紀錄"]
+                    child_results = {}
+                    created_count = 1 if root_created else 0
+                    for folder_name in folder_names:
+                        folder_id, created = ensure_drive_folder(service, root_id, folder_name)
+                        child_results[folder_name] = {"id": folder_id, "created": created}
+                        created_count += 1 if created else 0
+                    structure = {
+                        "parent_folder_id": parent_id,
+                        "root_folder_id": root_id,
+                        "child_folders": child_results,
+                        "verified_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    admin.table("site_settings").upsert({
+                        "setting_key": "google_drive_backup_structure",
+                        "setting_value": structure,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }, on_conflict="setting_key").execute()
+                    st.success(f"資料夾權限驗證成功！備份目錄已就緒（本次新增 {created_count} 個資料夾）。")
+                    st.caption("目前只建立目錄，尚未複製任何照片。")
+                    st.rerun()
+                except Exception as error:
+                    message = str(error)
+                    if "HttpError" in type(error).__name__:
+                        st.error("Google Drive API 拒絕存取。請確認服務帳號已加入新資料夾共用，且權限為編輯者。")
+                    elif "尚未設定" in message or "不是資料夾" in message or "沒有此資料夾" in message or "請先選定" in message:
+                        st.error(message)
+                    else:
+                        st.error("資料夾驗證或建立失敗，請確認服務帳號憑證與 Google Drive API 設定；詳細憑證不會顯示。")
 
             if not GOOGLE_DRIVE_BRIDGE_SECRET:
                 st.warning("網站端尚缺少 GOOGLE_DRIVE_BRIDGE_SECRET。請先在 Streamlit Cloud Secrets 新增這個項目，並填入與 Supabase Edge Functions 中完全相同的值；不要把值貼到聊天。")
