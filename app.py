@@ -19,7 +19,7 @@ import io
 import mimetypes
 
 st.set_page_config(
-    page_title="116級國三一畢業紀念冊",
+    page_title="國三一畢冊網站",
     page_icon="📷",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -332,6 +332,24 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
 .hero {text-align:center;color:#173b61;padding:8px 0 20px;}
 .hero h1 {font-size:2rem;font-weight:800;color:#173b61 !important;}
 .hero p {color:#58738e !important;}
+
+/* Unified button sizing and left-side navigation for Streamlit tab groups. */
+[data-testid="stTabs"] {display:grid !important;grid-template-columns:minmax(180px,220px) minmax(0,1fr) !important;column-gap:1.25rem !important;align-items:start !important;}
+[data-testid="stTabs"] > div:first-child[role="tablist"] {display:flex !important;flex-direction:column !important;align-items:stretch !important;gap:.35rem !important;border-right:1px solid #c7d9e9 !important;border-bottom:0 !important;padding:.25rem .65rem .25rem 0 !important;min-width:0 !important;}
+[data-testid="stTabs"] button[role="tab"] {justify-content:flex-start !important;width:100% !important;min-height:2.65rem !important;border-radius:.65rem !important;padding:.65rem .8rem !important;background:transparent !important;border:1px solid transparent !important;white-space:normal !important;text-align:left !important;}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {background:#dcecf9 !important;border-color:#b8d1e7 !important;}
+[data-testid="stTabs"] > div:nth-child(2) {min-width:0 !important;padding-top:.1rem !important;}
+.stButton button,[data-testid="stBaseButton"],[data-testid="stFormSubmitButton"] button,[data-testid="stDownloadButton"] button,[data-testid="stLinkButton"] a {min-height:2.65rem !important;height:auto !important;border-radius:.65rem !important;padding:.55rem 1rem !important;font-weight:600 !important;white-space:normal !important;}
+@media (max-width:760px) {
+.block-container {padding:1rem .8rem 2rem !important;}
+[data-testid="stMainBlockContainer"] {padding-top:1.2rem !important;}
+[data-testid="stTabs"] {grid-template-columns:minmax(0,1fr) !important;row-gap:.65rem !important;}
+[data-testid="stTabs"] > div:first-child[role="tablist"] {flex-direction:row !important;overflow-x:auto !important;flex-wrap:nowrap !important;border-right:0 !important;border-bottom:1px solid #c7d9e9 !important;padding:0 0 .5rem !important;gap:.4rem !important;}
+[data-testid="stTabs"] button[role="tab"] {width:auto !important;min-width:max-content !important;min-height:2.5rem !important;padding:.55rem .75rem !important;}
+[data-testid="stTabs"] > div:nth-child(2) {padding-top:.25rem !important;}
+.hero h1 {font-size:1.55rem !important;}
+.stButton button,[data-testid="stBaseButton"],[data-testid="stFormSubmitButton"] button,[data-testid="stDownloadButton"] button,[data-testid="stLinkButton"] a {width:100% !important;}
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -356,8 +374,8 @@ try:
 except Exception:
     st.image("fsvs_logo.png", width=88)
 st.markdown(
-    '<div class="hero"><h1>國立鳳山高級商工職業學校</h1>'
-    '<p>116級 國三一｜畢業紀念冊照片與拍攝資訊平台</p></div>',
+    '<div class="hero"><h1>國三一畢冊網站</h1>'
+    '<p>記錄我們一起走過的時光</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -585,70 +603,78 @@ except Exception:
     # 無法確認設定時採取保護性預設，避免學生端意外開放；管理員登入仍可使用。
     student_access_paused = True
 
-# 公開公告區：訪客不需登入即可查看已發布且仍在有效期間內的公告。
-# 使用僅存在於伺服器端的 admin client 讀取；不會將 Supabase Secret Key 傳給瀏覽器。
-st.subheader("📢 最新公告")
-st.caption("畢冊製作組發布的重要通知、拍攝異動及活動提醒；無須登入即可查看。")
-try:
-    public_notice_rows = (
-        admin.table("announcements")
-        .select("title, content, category, is_pinned, publish_at, expires_at, status, image_paths")
-        .eq("status", "published")
-        .limit(100)
-        .execute().data
-    )
-    public_now = datetime.now(timezone.utc)
-    public_visible_notices = []
-    for public_notice in public_notice_rows:
+# 首頁公告輪播：僅訪客首頁展開；登入後公告收進「公告中心」。
+# 公告資料仍沿用 announcements 資料表，不另建資料表或複製資料。
+role = current_role()
+
+if role is None:
+    @st.fragment(run_every="5s")
+    def render_public_notice_carousel():
         try:
-            public_publish_at = datetime.fromisoformat(
-                public_notice["publish_at"].replace("Z", "+00:00")
+            public_notice_rows = (
+                admin.table("announcements")
+                .select("title, content, category, is_pinned, publish_at, expires_at, status, image_paths")
+                .eq("status", "published")
+                .limit(100)
+                .execute().data
             )
-            if public_publish_at.tzinfo is None:
-                public_publish_at = public_publish_at.replace(tzinfo=timezone.utc)
-            if public_publish_at > public_now:
-                continue
-            public_expiry_value = public_notice.get("expires_at")
-            if public_expiry_value:
-                public_expiry_at = datetime.fromisoformat(
-                    public_expiry_value.replace("Z", "+00:00")
-                )
-                if public_expiry_at.tzinfo is None:
-                    public_expiry_at = public_expiry_at.replace(tzinfo=timezone.utc)
-                if public_expiry_at <= public_now:
+            public_now = datetime.now(timezone.utc)
+            public_visible_notices = []
+            for public_notice in public_notice_rows:
+                try:
+                    public_publish_at = datetime.fromisoformat(public_notice["publish_at"].replace("Z", "+00:00"))
+                    if public_publish_at.tzinfo is None:
+                        public_publish_at = public_publish_at.replace(tzinfo=timezone.utc)
+                    if public_publish_at > public_now:
+                        continue
+                    public_expiry_value = public_notice.get("expires_at")
+                    if public_expiry_value:
+                        public_expiry_at = datetime.fromisoformat(public_expiry_value.replace("Z", "+00:00"))
+                        if public_expiry_at.tzinfo is None:
+                            public_expiry_at = public_expiry_at.replace(tzinfo=timezone.utc)
+                        if public_expiry_at <= public_now:
+                            continue
+                    public_visible_notices.append((public_notice, public_publish_at))
+                except (KeyError, TypeError, ValueError):
                     continue
-            public_visible_notices.append((public_notice, public_publish_at))
-        except (KeyError, TypeError, ValueError):
-            # 日期格式不正確的公告不公開顯示，避免意外提前曝光。
-            continue
-    public_visible_notices.sort(
-        key=lambda item: (bool(item[0].get("is_pinned")), item[1]),
-        reverse=True,
-    )
-    if not public_visible_notices:
-        st.info("目前沒有已發布的公告。")
-    else:
-        for public_notice, public_publish_at in public_visible_notices:
+            public_visible_notices.sort(key=lambda item: (bool(item[0].get("is_pinned")), item[1]), reverse=True)
+            if not public_visible_notices:
+                st.info("目前沒有已發布的公告。")
+                return
+            current_index = int(st.session_state.get("public_notice_index", 0)) % len(public_visible_notices)
+            public_notice, public_publish_at = public_visible_notices[current_index]
             with st.container(border=True):
-                public_flags = []
-                if public_notice.get("is_pinned"):
-                    public_flags.append("📌 置頂")
-                public_flags.append(public_notice.get("category") or "一般通知")
-                st.caption("　｜　".join(public_flags))
-                st.markdown(f"**{public_notice.get('title') or '未命名公告'}**")
+                flags = (["📌 置頂"] if public_notice.get("is_pinned") else [])
+                flags.append(public_notice.get("category") or "一般通知")
+                st.caption("　｜　".join(flags))
+                st.markdown(f"### {public_notice.get('title') or '未命名公告'}")
                 st.write(public_notice.get("content") or "")
-                for public_image_path in (public_notice.get("image_paths") or []):
+                for image_path in (public_notice.get("image_paths") or []):
                     try:
-                        st.image(make_url(public_image_path), use_container_width=True)
+                        st.image(make_url(image_path), use_container_width=True)
                     except Exception:
                         st.caption("公告附圖目前無法讀取，請稍後重新整理。")
-                st.caption(
-                    "發布時間：" + public_publish_at.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
-                )
-except Exception:
-    st.warning("目前無法載入最新公告，請稍後重新整理。")
+                st.caption("發布時間：" + public_publish_at.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"))
+                previous_col, indicator_col, next_col = st.columns([1, 2, 1])
+                with previous_col:
+                    if st.button("← 上一則", key="public_notice_previous", use_container_width=True):
+                        st.session_state["public_notice_index"] = (current_index - 1) % len(public_visible_notices)
+                        st.rerun(scope="fragment")
+                with indicator_col:
+                    st.caption(f"公告 {current_index + 1}／{len(public_visible_notices)}｜每 5 秒自動切換")
+                with next_col:
+                    if st.button("下一則 →", key="public_notice_next", use_container_width=True):
+                        st.session_state["public_notice_index"] = (current_index + 1) % len(public_visible_notices)
+                        st.rerun(scope="fragment")
+            st.session_state["public_notice_index"] = (current_index + 1) % len(public_visible_notices)
+        except Exception:
+            st.warning("目前無法載入最新公告，請稍後重新整理。")
 
-role = current_role()
+    st.subheader("📢 最新公告")
+    st.caption("畢冊製作組發布的重要通知、拍攝異動及活動提醒。")
+    render_public_notice_carousel()
+
+
 
 if role == "student" and student_access_paused:
     st.warning("🔒 學生網站目前暫停開放")
@@ -873,10 +899,10 @@ if role == "student":
         "roster_empty": "目前尚未有學生完成分組。",
         "roster_load_error": "目前無法載入全班分組名單，請稍後重新整理。",
         "roster_unassigned_label": "尚未分組（{count} 位）",
-        "tab_announcements": "📢 最新公告",
+        "tab_announcements": "📢 公告中心",
         "tab_personal_upload": "📤 個人生活照繳交",
         "tab_my_photos": "🖼️ 我的照片",
-        "tab_group_signup": "👥 分組登記＆小組照繳交",
+        "tab_group_signup": "👥 小組合照繳交區",
         "tab_class_photo": "📸 班級團體照",
         "tab_personal_rules": "📝 個人生活照須知",
         "no_student_sections": "目前沒有開放顯示的學生頁面內容，請聯絡管理員。",
@@ -1400,7 +1426,7 @@ elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
     st.subheader("🛠️ 管理功能")
     st.caption("公告與學生頁面內容集中管理；其他功能依序排列。")
-    tab_labels = ["📢 公告與內容", "🖼️ 全班照片", "👥 分組管理", "👤 人員管理", "⚙️ 顯示設定"]
+    tab_labels = ["📢 公告管理", "🖼️ 照片管理", "👥 分組管理", "👤 人員管理", "⚙️ 學生頁面設定"]
     if is_full_admin:
         tab_labels.extend(["☁️ Google Drive 備份", "🔐 帳號管理"])
     created_tabs = st.tabs(tab_labels)
