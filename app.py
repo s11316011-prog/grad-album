@@ -1319,6 +1319,10 @@ elif role == "admin":
                     except Exception:
                         st.error("備份資料夾設定暫時無法儲存，請稍後重新整理再試。")
 
+            if st.session_state.get("drive_backup_result_message"):
+                st.success(st.session_state.pop("drive_backup_result_message"))
+                st.caption("目前只建立／確認備份目錄，尚未複製任何照片。")
+
             if st.button("🧪 驗證資料夾權限並建立備份目錄", use_container_width=True, key="verify_and_create_drive_backup_folders"):
                 try:
                     service = get_google_drive_service()
@@ -1352,8 +1356,7 @@ elif role == "admin":
                         "setting_value": structure,
                         "updated_at": datetime.now(timezone.utc).isoformat(),
                     }, on_conflict="setting_key").execute()
-                    st.success(f"資料夾權限驗證成功！備份目錄已就緒（本次新增 {created_count} 個資料夾）。")
-                    st.caption("目前只建立目錄，尚未複製任何照片。")
+                    st.session_state["drive_backup_result_message"] = f"資料夾權限驗證成功！備份目錄已就緒（本次新增 {created_count} 個資料夾）。"
                     st.rerun()
                 except Exception as error:
                     message = str(error)
