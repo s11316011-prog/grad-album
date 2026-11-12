@@ -754,30 +754,41 @@ if role == "student":
         with student_tab_map["show_personal_photo_upload"]:
             st.subheader(student_content["upload_title"])
             st.info(student_content["upload_intro"])
-            files = st.file_uploader(
-                student_content["upload_file_help"],
-                type=["jpg", "jpeg", "png", "webp"],
-                accept_multiple_files=True,
-            )
-            if st.button(student_content["upload_button"], type="primary"):
-                if not files:
-                    st.warning(student_content["upload_choose_warning"])
-                else:
-                    count = 0
-                    for file in files:
-                        data, mime, error = image_info(file)
-                        if error:
-                            st.error(student_content["upload_file_error"].format(filename=file.name, error=error))
-                            continue
-                        ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
-                        path = f"{identity['seat_no']}/{uuid.uuid4().hex}.{ext}"
-                        try:
-                            upload_photo(path, data, mime)
-                            count += 1
-                        except Exception:
-                            st.error(student_content["upload_fail"].format(filename=file.name))
-                    if count:
-                        st.success(student_content["upload_success"].format(count=count))
+            existing_personal_photos = list_student_photos(identity["seat_no"])
+            if existing_personal_photos:
+                st.success("你已成功上傳個人生活照！系統已收到照片。每位同學限上傳 1 張。")
+            else:
+                personal_photo_file = st.file_uploader(
+                    student_content["upload_file_help"],
+                    type=["jpg", "jpeg", "png", "webp"],
+                    accept_multiple_files=False,
+                    key=f"personal_photo_upload_{identity['id']}",
+                )
+                if st.button(
+                    student_content["upload_button"],
+                    type="primary",
+                    disabled=personal_photo_file is None,
+                    key=f"personal_photo_upload_button_{identity['id']}",
+                ):
+                    if personal_photo_file is None:
+                        st.warning(student_content["upload_choose_warning"])
+                    else:
+                        # Recheck storage before upload so a second submission cannot bypass the one-photo limit.
+                        if list_student_photos(identity["seat_no"]):
+                            st.success("你已成功上傳個人生活照！系統已收到照片。每位同學限上傳 1 張。")
+                        else:
+                            data, mime, error = image_info(personal_photo_file)
+                            if error:
+                                st.error(student_content["upload_file_error"].format(filename=personal_photo_file.name, error=error))
+                            else:
+                                ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
+                                path = f"{identity['seat_no']}/{uuid.uuid4().hex}.{ext}"
+                                try:
+                                    upload_photo(path, data, mime)
+                                    st.success("你已成功上傳個人生活照！系統已收到照片。")
+                                    st.rerun()
+                                except Exception:
+                                    st.error(student_content["upload_fail"].format(filename=personal_photo_file.name))
     if "show_my_photos" in student_tab_map:
         with student_tab_map["show_my_photos"]:
             st.subheader(student_content["my_photos_title"])
