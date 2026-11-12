@@ -14,6 +14,9 @@ from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io
+import mimetypes
 
 st.set_page_config(
     page_title="116級國三一畢業紀念冊",
@@ -94,6 +97,128 @@ def ensure_drive_folder(service, parent_id, folder_name):
         fields="id,name",
     ).execute()
     return created["id"], True
+
+
+def classify_backup_folder(storage_path):
+    """Map known Storage path conventions to the prepared Drive folders."""
+    if storage_path.startswith("shoot_groups/"):
+        return "02_小組合照"
+    if storage_path.startswith("class_photos/"):
+        return "03_班級團體照"
+    if storage_path.startswith("announcements/"):
+        return "04_公告圖片"
+    parts = storage_path.split("/")
+    if len(parts) == 2 and parts[0].isdigit():
+        return "01_個人生活照"
+    if len(parts) == 1 and parts[0].split("_", 1)[0].isdigit():
+        return "01_個人生活照"
+    return None
+
+
+def backup_supabase_photos_to_drive(service, folder_ids):
+    """Copy Storage photos to Drive without changing or deleting source objects."""
+    storage = admin.storage.from_(BUCKET)
+    paths = list_all_photos()
+    result = {
+        "total": len(paths),
+        "uploaded": 0,
+        "already_backed_up": 0,
+        "unclassified": 0,
+        "failed": 0,
+        "uploaded_by_category": {},
+        "failed_types": [],
+        "log_written": False,
+    }
+    failed_types = set()
+    for storage_path in paths:
+        category = classify_backup_folder(storage_path)
+        if not category or category not in folder_ids:
+            result["unclassified"] += 1
+            continue
+        try:
+            # Hash the actual bytes as well as the path: replacing a photo at the
+            # same Storage path creates a new Drive copy instead of being skipped.
+            file_data = storage.download(storage_path)
+            if not file_data:
+                raise ValueError("empty_storage_object")
+            content_hash = hashlib.sha256(file_data).hexdigest()
+            source_key = hashlib.sha256(
+                f"{BUCKET}:{storage_path}:{content_hash}".encode("utf-8")
+            ).hexdigest()
+            folder_id = folder_ids[category]
+            safe_folder_id = folder_id.replace("\\", "\\\\").replace("'", "\\'")
+            query = (
+                f"'{safe_folder_id}' in parents and "
+                f"appProperties has {{ key='source_key' and value='{source_key}' }} "
+                "and trashed = false"
+            )
+            existing = service.files().list(
+                q=query, spaces="drive", pageSize=1,
+                fields="files(id,name)",
+            ).execute().get("files", [])
+            if existing:
+                result["already_backed_up"] += 1
+                continue
+
+            file_name = storage_path.replace("/", "__")
+            if "." in file_name:
+                stem, extension = file_name.rsplit(".", 1)
+                file_name = f"{stem}__{content_hash[:10]}.{extension}"
+            else:
+                file_name = f"{file_name}__{content_hash[:10]}"
+            mime_type = mimetypes.guess_type(storage_path)[0] or "application/octet-stream"
+            media = MediaIoBaseUpload(
+                io.BytesIO(file_data), mimetype=mime_type, resumable=True
+            )
+            service.files().create(
+                body={
+                    "name": file_name,
+                    "parents": [folder_id],
+                    "description": f"Copied from Supabase Storage bucket '{BUCKET}', path '{storage_path}'. Original retained.",
+                    "appProperties": {
+                        "source_key": source_key,
+                        "source_bucket": BUCKET,
+                        "content_sha256": content_hash,
+                    },
+                },
+                media_body=media,
+                fields="id,name",
+            ).execute()
+            result["uploaded"] += 1
+            result["uploaded_by_category"][category] = (
+                result["uploaded_by_category"].get(category, 0) + 1
+            )
+        except Exception as error:
+            result["failed"] += 1
+            failed_types.add(type(error).__name__)
+
+    result["failed_types"] = sorted(failed_types)
+
+    # Write a compact audit record only after a completely successful batch.
+    if result["uploaded"] > 0 and result["failed"] == 0 and result["unclassified"] == 0:
+        log_folder_id = folder_ids.get("05_備份紀錄")
+        if log_folder_id:
+            log_record = {
+                "backup_at": datetime.now(timezone.utc).isoformat(),
+                "source_bucket": BUCKET,
+                "total_objects_seen": result["total"],
+                "uploaded": result["uploaded"],
+                "already_backed_up": result["already_backed_up"],
+                "uploaded_by_category": result["uploaded_by_category"],
+            }
+            log_name = "backup_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S") + ".json"
+            log_media = MediaIoBaseUpload(
+                io.BytesIO(json.dumps(log_record, ensure_ascii=False, indent=2).encode("utf-8")),
+                mimetype="application/json",
+                resumable=False,
+            )
+            service.files().create(
+                body={"name": log_name, "parents": [log_folder_id]},
+                media_body=log_media,
+                fields="id",
+            ).execute()
+            result["log_written"] = True
+    return result
 
 
 st.markdown("""
@@ -1379,6 +1504,61 @@ elif role == "admin":
                         st.error(f"Google 服務帳號憑證驗證失敗（{error_type}）。請確認 GOOGLE_SERVICE_ACCOUNT_JSON 的 client_email、private_key、token_uri 等欄位完整，且私鑰未被截斷。")
                     else:
                         st.error(f"備份目錄建立失敗，錯誤類型：{error_type}。請將這段錯誤類型回報給我；系統不會顯示私鑰或完整憑證。")
+
+            st.divider()
+            st.subheader("📦 照片備份")
+            st.caption("將 Supabase Storage 中已分類的照片複製到上方備份目錄；原始照片會完整保留。重複執行會自動略過內容相同的備份。")
+            if st.button("☁️ 開始備份目前所有照片", use_container_width=True, key="run_google_drive_photo_backup"):
+                try:
+                    structure_rows = admin.table("site_settings").select("setting_value").eq(
+                        "setting_key", "google_drive_backup_structure"
+                    ).limit(1).execute().data
+                    backup_structure = (structure_rows or [{}])[0].get("setting_value") or {}
+                    if not backup_target.get("folder_id"):
+                        raise RuntimeError("請先選定 Google Drive 備份資料夾")
+                    if backup_structure.get("parent_folder_id") != backup_target.get("folder_id"):
+                        raise RuntimeError("目前備份目錄尚未驗證，請先按「驗證資料夾權限並建立備份目錄」")
+                    child_records = backup_structure.get("child_folders") or {}
+                    required_folders = [
+                        "01_個人生活照", "02_小組合照", "03_班級團體照",
+                        "04_公告圖片", "05_備份紀錄",
+                    ]
+                    folder_ids = {
+                        name: (child_records.get(name) or {}).get("id")
+                        for name in required_folders
+                    }
+                    if any(not value for value in folder_ids.values()):
+                        raise RuntimeError("備份子資料夾資料不完整，請重新驗證並建立備份目錄")
+                    service = get_google_drive_service()
+                    with st.spinner("正在比對並複製照片，請勿關閉頁面…"):
+                        backup_result = backup_supabase_photos_to_drive(service, folder_ids)
+                    if backup_result["failed"] or backup_result["unclassified"]:
+                        st.warning(
+                            f"本次處理 {backup_result['total']} 個檔案：新增 {backup_result['uploaded']} 個、"
+                            f"已存在 {backup_result['already_backed_up']} 個、未分類 {backup_result['unclassified']} 個、"
+                            f"失敗 {backup_result['failed']} 個。未分類或失敗項目不會寫入成功備份紀錄。"
+                        )
+                        if backup_result["failed_types"]:
+                            st.caption("錯誤類型：" + "、".join(backup_result["failed_types"]))
+                    elif backup_result["uploaded"]:
+                        st.success(
+                            f"照片備份完成！新增 {backup_result['uploaded']} 個檔案，"
+                            f"略過已備份檔案 {backup_result['already_backed_up']} 個。"
+                        )
+                        if backup_result["log_written"]:
+                            st.caption("本次成功紀錄已寫入「05_備份紀錄」。")
+                        else:
+                            st.warning("照片已複製，但備份紀錄檔未能建立；請稍後檢查 Google Drive 權限。")
+                    else:
+                        st.info(
+                            f"目前沒有需要新增的照片；已確認 {backup_result['already_backed_up']} 個檔案已有備份。"
+                        )
+                except Exception as error:
+                    error_type = type(error).__name__
+                    if isinstance(error, RuntimeError):
+                        st.error(str(error))
+                    else:
+                        st.error(f"照片備份未完成（{error_type}）。原始照片沒有被移動或刪除，請回報這個錯誤類型。")
 
             if not GOOGLE_DRIVE_BRIDGE_SECRET:
                 st.warning("網站端尚缺少 GOOGLE_DRIVE_BRIDGE_SECRET。請先在 Streamlit Cloud Secrets 新增這個項目，並填入與 Supabase Edge Functions 中完全相同的值；不要把值貼到聊天。")
