@@ -198,26 +198,29 @@ def backup_supabase_photos_to_drive(service, folder_ids):
     if result["uploaded"] > 0 and result["failed"] == 0 and result["unclassified"] == 0:
         log_folder_id = folder_ids.get("05_備份紀錄")
         if log_folder_id:
-            log_record = {
-                "backup_at": datetime.now(timezone.utc).isoformat(),
-                "source_bucket": BUCKET,
-                "total_objects_seen": result["total"],
-                "uploaded": result["uploaded"],
-                "already_backed_up": result["already_backed_up"],
-                "uploaded_by_category": result["uploaded_by_category"],
-            }
-            log_name = "backup_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S") + ".json"
-            log_media = MediaIoBaseUpload(
-                io.BytesIO(json.dumps(log_record, ensure_ascii=False, indent=2).encode("utf-8")),
-                mimetype="application/json",
-                resumable=False,
-            )
-            service.files().create(
-                body={"name": log_name, "parents": [log_folder_id]},
-                media_body=log_media,
-                fields="id",
-            ).execute()
-            result["log_written"] = True
+            try:
+                log_record = {
+                    "backup_at": datetime.now(timezone.utc).isoformat(),
+                    "source_bucket": BUCKET,
+                    "total_objects_seen": result["total"],
+                    "uploaded": result["uploaded"],
+                    "already_backed_up": result["already_backed_up"],
+                    "uploaded_by_category": result["uploaded_by_category"],
+                }
+                log_name = "backup_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S") + ".json"
+                log_media = MediaIoBaseUpload(
+                    io.BytesIO(json.dumps(log_record, ensure_ascii=False, indent=2).encode("utf-8")),
+                    mimetype="application/json",
+                    resumable=False,
+                )
+                service.files().create(
+                    body={"name": log_name, "parents": [log_folder_id]},
+                    media_body=log_media,
+                    fields="id",
+                ).execute()
+                result["log_written"] = True
+            except Exception as log_error:
+                result["log_error_type"] = type(log_error).__name__
     return result
 
 
