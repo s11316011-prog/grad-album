@@ -1172,8 +1172,8 @@ elif role == "teacher":
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
     st.subheader("🛠️ 管理功能")
-    st.caption("依照日常管理流程排列：公告 → 照片 → 分組 → 人員 → 顯示設定；帳號管理僅完整管理權限可見。")
-    tab_labels = ["📢 公告管理", "🖼️ 全班照片", "👥 分組管理", "👤 人員管理", "⚙️ 顯示設定"]
+    st.caption("公告與學生頁面內容集中管理；其他功能依序排列。")
+    tab_labels = ["📢 公告與內容", "🖼️ 全班照片", "👥 分組管理", "👤 人員管理", "⚙️ 顯示設定"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
@@ -1627,6 +1627,38 @@ elif role == "admin":
                             st.error("公告刪除失敗，請稍後再試。")
         except Exception:
             st.error("公告清單讀取失敗，請確認 announcements 資料表已建立。")
+        with st.expander("✏️ 學生頁面內容設定", expanded=False):
+            st.caption("修改學生頁面會顯示的拍攝資訊與照片繳交說明；其他既有文字設定會原樣保留。")
+            try:
+                content_rows = admin.table("site_settings").select("setting_value").eq("setting_key", "student_page_content").limit(1).execute().data
+                saved_content = content_rows[0].get("setting_value") if content_rows and isinstance(content_rows[0].get("setting_value"), dict) else {}
+                edited_content = dict(saved_content)
+                with st.form("announcement_page_content_settings"):
+                    st.markdown("**📸 班級團體照**")
+                    edited_content["class_photo_date"] = st.text_input("拍攝日期", value=saved_content.get("class_photo_date", "11 月 6 日（星期五）"))
+                    edited_content["class_photo_time"] = st.text_input("集合時間", value=saved_content.get("class_photo_time", "上午 08:20"))
+                    edited_content["class_photo_location"] = st.text_input("集合地點", value=saved_content.get("class_photo_location", "健康中心旁的小石桌"))
+                    edited_content["class_photo_clothing"] = st.text_input("服裝要求", value=saved_content.get("class_photo_clothing", "請穿著制服"))
+                    edited_content["class_photo_count"] = st.text_input("預計拍攝張數", value=saved_content.get("class_photo_count", "3 張"))
+                    edited_content["class_photo_actions"] = st.text_area("指定動作", value=saved_content.get("class_photo_actions", "1. YA 手勢\\n2. 小愛心\\n3. 戳臉"), height=90)
+                    edited_content["class_photo_notice"] = st.text_area("提醒文字", value=saved_content.get("class_photo_notice", "請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。"), height=75)
+                    st.divider()
+                    st.markdown("**👥 小組拍攝**")
+                    edited_content["group_notice"] = st.text_area("小組拍攝注意事項", value=saved_content.get("group_notice", "小組拍攝注意事項\\n\\n（1）需要 4 張\\n\\n（2）動作需自行決定"), height=110)
+                    st.divider()
+                    st.markdown("**📝 個人生活照須知**")
+                    edited_content["personal_rules_deadline"] = st.text_input("截止日期提醒", value=saved_content.get("personal_rules_deadline", "每位同學都必須繳交，截止日期為 11 月 13 日。"))
+                    edited_content["personal_rules_list"] = st.text_area("生活照注意事項", value=saved_content.get("personal_rules_list", "1. 每位同學都必須繳交個人生活照。\\n2. 不可用任何方式遮蓋五官。\\n3. 請採用七分身拍攝方式。\\n4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\\n5. 請於 11 月 13 日前至指定網址繳交。"), height=150)
+                    edited_content["personal_rules_extra"] = st.text_area("補充說明", value=saved_content.get("personal_rules_extra", "七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。"), height=75)
+                    edited_content["personal_rules_contact"] = st.text_area("聯絡方式／問題反映文字", value=saved_content.get("personal_rules_contact", "如有任何問題，請直接提出，或私下向相關負責人反映。"), height=75)
+                    save_page_content = st.form_submit_button("💾 儲存內容設定", type="primary", use_container_width=True)
+                if save_page_content:
+                    admin.table("site_settings").upsert({"setting_key": "student_page_content", "setting_value": edited_content, "updated_at": datetime.now(timezone.utc).isoformat()}, on_conflict="setting_key").execute()
+                    st.success("學生頁面內容已更新。")
+                    st.rerun()
+            except Exception:
+                st.error("內容設定讀取或儲存失敗，請稍後再試。")
+
     with photo_tab:
         st.subheader("全班照片管理")
         st.warning("刪除照片無法復原，請確認選取內容。")
@@ -1715,234 +1747,6 @@ elif role == "admin":
                 st.success("學生頁面顯示設定及暫停狀態已更新。")
                 st.rerun()
 
-            st.divider()
-            st.markdown("### ✏️ 內容設定")
-            content_defaults = {
-                "class_photo_date": "11 月 6 日（星期五）", "class_photo_time": "上午 08:20",
-                "class_photo_location": "健康中心旁的小石桌", "class_photo_clothing": "請穿著制服",
-                "class_photo_count": "3 張", "class_photo_actions": "1. YA 手勢\n2. 小愛心\n3. 戳臉",
-                "class_photo_notice": "請依照集合時間準時到場；如有異動，請留意畢冊製作組後續公告。",
-                "group_notice": "小組拍攝注意事項\n\n（1）需要 4 張\n\n（2）動作需自行決定",
-                "personal_rules_deadline": "每位同學都必須繳交，截止日期為 11 月 13 日。",
-                "personal_rules_list": "1. 每位同學都必須繳交個人生活照。\n2. 不可用任何方式遮蓋五官。\n3. 請採用七分身拍攝方式。\n4. 修圖請使用電腦進行，避免手機修圖造成圖片呈現不佳。\n5. 請於 11 月 13 日前至指定網址繳交。",
-                "personal_rules_extra": "七分身拍攝範例及指定繳交網址尚待提供，公布後會再補上。",
-                "personal_rules_contact": "如有任何問題，請直接提出，或私下向相關負責人反映。",
-                "roster_title": "👥 全班分組一覽",
-                "roster_caption": "所有同學都可以查看目前各組名單；組長會特別標示。",
-                "roster_empty": "目前尚未有學生完成分組。",
-                "roster_load_error": "目前無法載入全班分組名單，請稍後重新整理。",
-                "roster_unassigned_label": "尚未分組（{count} 位）",
-                "tab_announcements": "📢 最新公告",
-                "tab_personal_upload": "📤 個人生活照繳交",
-                "tab_my_photos": "🖼️ 我的照片",
-                "tab_group_signup": "👥 分組登記＆小組照繳交",
-                "tab_class_photo": "📸 班級團體照",
-                "tab_personal_rules": "📝 個人生活照須知",
-                "no_student_sections": "目前沒有開放顯示的學生頁面內容，請聯絡管理員。",
-                "upload_title": "上傳個人生活照",
-                "upload_intro": "每位同學都必須繳交個人生活照，請先閱讀「個人生活照須知」再上傳。",
-                "upload_file_help": "可多選 JPG、PNG、WEBP，每張上限 10 MB",
-                "upload_button": "確認上傳",
-                "upload_choose_warning": "請先選擇照片。",
-                "upload_file_error": "{filename}：{error}",
-                "upload_fail": "{filename} 上傳失敗，請稍後再試。",
-                "upload_success": "成功上傳 {count} 張照片。",
-                "my_photos_title": "我的照片",
-                "my_photos_empty": "目前還沒有上傳照片。",
-                "my_photos_error": "照片讀取失敗，請稍後再試。",
-                "class_photo_title": "班級團體照拍攝公告",
-                "class_photo_actions_label": "**指定動作：**",
-                "announcements_caption": "查看畢冊製作組發布的重要通知、拍攝異動及活動提醒。",
-                "announcements_empty": "目前沒有已發布的公告。",
-                "announcement_pinned": "📌 置頂",
-                "announcement_default_category": "一般通知",
-                "announcement_published_at": "發布時間：{published_at}",
-                "announcements_error": "公告讀取失敗，請稍後再試。",
-                "group_signup_title": "分組登記與小組合照繳交",
-                "group_leader_label": "組長：**{seat_no} 號｜{name}**",
-                "group_signup_caption": "由組長建立小組，輸入其他組員的座號即可。系統會自動帶入正確姓名，並將整組名單一次送出。",
-                "group_joined": "你已加入第 {group_no} 組，不能再加入其他組別。",
-                "group_member_title": "**第 {group_no} 組組員名單**",
-                "group_photo_title": "### 📷 本組小組合照（共 4 張）",
-                "group_leader_missing": "本組組長尚未完成上傳權限登記，請聯絡管理員協助設定。",
-                "group_photo_leader_help": "由組長統一上傳本組 4 張照片。每個欄位可重新上傳替換；每張上限 10 MB。",
-                "group_photo_member_help": "本組照片由組長統一上傳，你可以查看目前繳交進度。",
-                "group_photo_slot": "**第 {slot} 張**",
-                "group_photo_uploaded": "已繳交",
-                "group_photo_missing": "尚未繳交",
-                "group_photo_choose": "選擇第 {slot} 張",
-                "group_photo_upload": "上傳／替換第 {slot} 張",
-                "group_photo_success": "第 {slot} 張小組照已上傳。",
-                "group_photo_fail": "第 {slot} 張照片上傳失敗，請稍後再試。",
-                "group_photo_error": "小組照片讀取失敗，請稍後再試。",
-                "group_member_input": "其他組員座號",
-                "group_member_placeholder": "例如：2、5、8\n也可以每行輸入一個座號",
-                "group_member_help": "不用輸入自己的座號，系統會自動把你列為組長。可用逗號、頓號或換行分隔。",
-                "group_submit": "確認組隊並送出",
-                "group_need_member": "請至少輸入一位其他組員的座號。",
-                "group_self_member": "不用輸入自己的座號，系統會自動加入組長。",
-                "group_success": "組隊成功！第 {group_no} 組，共 {member_count} 位組員。",
-                "group_duplicate_error": "送出失敗：組員名單有重複，或有人已經加入其他小組。請重新確認座號。",
-                "group_seat_error": "送出失敗：有座號查不到，請確認座號是否正確。",
-                "group_submit_error": "小組送出失敗，請稍後重試；若持續發生，請聯絡畢冊製作組。",
-                "group_load_error": "小組組隊功能目前無法讀取資料，請稍後再試或聯絡畢冊製作組。",
-                "personal_rules_title": "個人生活照繳交規範",
-                "roster_group_title": "**第 {group_no} 組**",
-                "roster_leader_prefix": "組長｜",
-                "roster_member_format": "{seat_no} 號｜{leader_prefix}{name}",
-                "roster_unassigned_member_format": "{seat_no} 號｜{name}",
-                "class_photo_date_label": "**拍攝日期：**",
-                "class_photo_time_label": "**集合時間：**",
-                "class_photo_location_label": "**集合地點：**",
-                "class_photo_clothing_label": "**服裝要求：**",
-                "class_photo_count_label": "**預計拍攝：**",
-                "group_photo_upload_error": "{error}",
-                "login_session_caption": "登入有效時間：30 分鐘",
-                "student_login_success": "學生登入成功：{seat_no} 號｜{name}",
-                "refresh_button": "🔄 刷新",
-                "change_password_button": "🔐 更改密碼",
-                "logout_button": "登出",
-                "password_title": "### 🔐 更改密碼",
-                "password_student_caption": "請輸入目前密碼及新密碼完成修改。",
-                "password_current_label": "目前密碼",
-                "password_new_label": "新密碼（8～128 個字元）",
-                "password_confirm_label": "再次輸入新密碼",
-                "password_submit_button": "確認更改密碼",
-                "password_fill_warning": "請完整填寫所有欄位。",
-                "password_length_warning": "新密碼長度需為 8～128 個字元。",
-                "password_mismatch_error": "兩次輸入的新密碼不一致。",
-                "password_success": "密碼已更新，請下次使用新密碼登入。",
-                "password_wrong_error": "目前密碼錯誤，密碼未變更。",
-                "password_general_error": "目前無法更改密碼，請稍後再試。",
-            }
-            saved_content = current_settings.get("student_page_content")
-            saved_content = saved_content if isinstance(saved_content, dict) else {}
-            with st.form("student_page_content_settings"):
-                edited_content = {}
-                st.markdown("#### 📸 班級團體照")
-                for key, label in [
-                    ("class_photo_date", "拍攝日期"), ("class_photo_time", "集合時間"),
-                    ("class_photo_location", "集合地點"), ("class_photo_clothing", "服裝要求"),
-                    ("class_photo_count", "預計拍攝張數"), ("class_photo_actions", "指定動作"),
-                    ("class_photo_notice", "提醒文字"),
-                ]:
-                    edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=75)
-                st.markdown("#### 👥 分組拍攝注意事項")
-                edited_content["group_notice"] = st.text_area("小組拍攝注意事項", value=saved_content.get("group_notice", content_defaults["group_notice"]), key="edit_group_notice", height=90)
-                st.markdown("#### 📝 個人生活照須知")
-                for key, label in [
-                    ("personal_rules_deadline", "截止日期提醒"),
-                    ("personal_rules_list", "生活照注意事項（可自行編輯編號及換行）"),
-                    ("personal_rules_extra", "補充說明"), ("personal_rules_contact", "聯絡方式／問題反映文字"),
-                ]:
-                    edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=100)
-                st.markdown("#### 🧩 其他學生頁面文字")
-                content_labels = {
-                    "roster_title": "全班分組一覽標題",
-                    "roster_caption": "全班分組一覽說明",
-                    "roster_empty": "尚無分組提示",
-                    "roster_load_error": "名單載入失敗提示",
-                    "roster_unassigned_label": "未分組區塊標題（{count} 會代入人數）",
-                    "tab_announcements": "最新公告頁籤名稱",
-                    "tab_personal_upload": "個人生活照繳交頁籤名稱",
-                    "tab_my_photos": "我的照片頁籤名稱",
-                    "tab_group_signup": "分組登記頁籤名稱",
-                    "tab_class_photo": "班級團體照頁籤名稱",
-                    "tab_personal_rules": "個人生活照須知頁籤名稱",
-                    "no_student_sections": "所有區塊關閉時的提示",
-                    "upload_title": "生活照上傳標題",
-                    "upload_intro": "生活照上傳說明",
-                    "upload_file_help": "照片格式與大小提示",
-                    "upload_button": "生活照上傳按鈕",
-                    "upload_choose_warning": "未選擇照片提示",
-                    "upload_file_error": "檔案檢查錯誤（{filename}、{error}）",
-                    "upload_fail": "照片上傳失敗提示（{filename}）",
-                    "upload_success": "照片上傳成功提示（{count}）",
-                    "my_photos_title": "我的照片標題",
-                    "my_photos_empty": "沒有照片提示",
-                    "my_photos_error": "照片讀取失敗提示",
-                    "class_photo_title": "班級團體照標題",
-                    "class_photo_actions_label": "指定動作欄位標題",
-                    "announcements_caption": "最新公告說明",
-                    "announcements_empty": "沒有公告提示",
-                    "announcement_pinned": "置頂標籤",
-                    "announcement_default_category": "公告預設分類",
-                    "announcement_published_at": "公告發布時間文字（{published_at}）",
-                    "announcements_error": "公告讀取失敗提示",
-                    "group_signup_title": "分組登記區塊標題",
-                    "group_leader_label": "組長資訊格式（{seat_no}、{name}）",
-                    "group_signup_caption": "分組建立說明",
-                    "group_joined": "已加入組別提示（{group_no}）",
-                    "group_member_title": "組員名單標題（{group_no}）",
-                    "group_photo_title": "小組合照標題",
-                    "group_leader_missing": "未設定組長提示",
-                    "group_photo_leader_help": "組長上傳說明",
-                    "group_photo_member_help": "組員查看說明",
-                    "group_photo_slot": "照片欄位名稱（{slot}）",
-                    "group_photo_uploaded": "照片已繳交狀態",
-                    "group_photo_missing": "照片未繳交狀態",
-                    "group_photo_choose": "選擇照片欄位（{slot}）",
-                    "group_photo_upload": "上傳／替換按鈕（{slot}）",
-                    "group_photo_success": "小組照片成功提示（{slot}）",
-                    "group_photo_fail": "小組照片失敗提示（{slot}）",
-                    "group_photo_error": "小組照片讀取失敗提示",
-                    "group_member_input": "組員座號輸入欄名稱",
-                    "group_member_placeholder": "組員座號輸入範例",
-                    "group_member_help": "組員座號輸入說明",
-                    "group_submit": "建立小組按鈕",
-                    "group_need_member": "未輸入組員提示",
-                    "group_self_member": "輸入自己座號提示",
-                    "group_success": "組隊成功提示（{group_no}、{member_count}）",
-                    "group_duplicate_error": "重複組員／已加入其他組別錯誤",
-                    "group_seat_error": "座號查無資料錯誤",
-                    "group_submit_error": "組隊送出失敗錯誤",
-                    "group_load_error": "分組資料讀取失敗錯誤",
-                    "personal_rules_title": "個人生活照須知標題"
-                }
-                for key, label in content_labels.items():
-                    edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
-                st.markdown("#### 🧾 動態標籤與格式")
-                extra_content_labels = {
-                    "roster_group_title": "分組標題格式",
-                    "roster_leader_prefix": "組長標示文字",
-                    "roster_member_format": "組員名單格式（{seat_no}、{leader_prefix}、{name}）",
-                    "roster_unassigned_member_format": "未分組名單格式（{seat_no}、{name}）",
-                    "class_photo_date_label": "拍攝日期欄位標籤",
-                    "class_photo_time_label": "集合時間欄位標籤",
-                    "class_photo_location_label": "集合地點欄位標籤",
-                    "class_photo_clothing_label": "服裝要求欄位標籤",
-                    "class_photo_count_label": "拍攝張數欄位標籤",
-                    "group_photo_upload_error": "小組照片格式錯誤提示（{error} 會代入錯誤原因）",
-                }
-                for key, label in extra_content_labels.items():
-                    edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
-                st.markdown("#### 🔐 學生登入與密碼操作文字")
-                shared_ui_labels = {
-                    "login_session_caption": "登入時間提示",
-                    "student_login_success": "學生登入成功訊息格式",
-                    "refresh_button": "刷新按鈕文字",
-                    "change_password_button": "更改密碼按鈕文字",
-                    "logout_button": "登出按鈕文字",
-                    "password_title": "更改密碼區塊標題",
-                    "password_student_caption": "學生更改密碼說明",
-                    "password_current_label": "目前密碼欄位標籤",
-                    "password_new_label": "新密碼欄位標籤",
-                    "password_confirm_label": "確認新密碼欄位標籤",
-                    "password_submit_button": "確認更改密碼按鈕",
-                    "password_fill_warning": "欄位未填寫提示",
-                    "password_length_warning": "密碼長度錯誤提示",
-                    "password_mismatch_error": "密碼不一致提示",
-                    "password_success": "密碼更新成功提示",
-                    "password_wrong_error": "目前密碼錯誤提示",
-                    "password_general_error": "密碼更新失敗提示"
-                }
-                for key, label in shared_ui_labels.items():
-                    edited_content[key] = st.text_area(label, value=saved_content.get(key, content_defaults[key]), key="edit_"+key, height=65)
-                save_content = st.form_submit_button("儲存內容設定", type="primary")
-            if save_content:
-                admin.table("site_settings").upsert({"setting_key": "student_page_content", "setting_value": edited_content, "updated_at": datetime.now(timezone.utc).isoformat()}, on_conflict="setting_key").execute()
-                st.success("學生頁面內容已更新。")
-                st.rerun()
         except Exception:
             st.error("讀取或儲存學生頁面設定失敗，請確認 site_settings 資料表及權限。")
 
