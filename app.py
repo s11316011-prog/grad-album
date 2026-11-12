@@ -1258,57 +1258,25 @@ elif role == "admin":
             if backup_target.get("folder_id"):
                 st.info(f"目前選定的上層資料夾：{backup_target.get('folder_name') or 'Google Drive 資料夾'}")
 
-            if st.button("📁 選擇 Google Drive 備份資料夾", use_container_width=True, key="choose_google_drive_folder"):
-                if not (GOOGLE_DRIVE_BRIDGE_SECRET and GOOGLE_PICKER_API_KEY and GOOGLE_CLOUD_PROJECT_NUMBER):
-                    st.error("缺少 Google Picker 設定。請確認 GOOGLE_DRIVE_BRIDGE_SECRET、GOOGLE_PICKER_API_KEY 與 GOOGLE_CLOUD_PROJECT_NUMBER 已設定。")
+            configured_drive_folder_id = str(st.secrets.get("GOOGLE_DRIVE_FOLDER_ID", "")).strip()
+            if st.button("📁 使用原本設定的 Google Drive 資料夾", use_container_width=True, key="use_configured_google_drive_folder"):
+                if not configured_drive_folder_id:
+                    st.error("尚未設定 GOOGLE_DRIVE_FOLDER_ID，請先確認 Streamlit Cloud Secrets。")
                 else:
                     try:
-                        token_request = urllib.request.Request(
-                            GOOGLE_DRIVE_OAUTH_FUNCTION_URL,
-                            data=json.dumps({"action": "picker_token", "environment": "production"}).encode("utf-8"),
-                            headers={"Content-Type": "application/json", "x-bridge-secret": GOOGLE_DRIVE_BRIDGE_SECRET},
-                            method="POST",
-                        )
-                        with urllib.request.urlopen(token_request, timeout=20) as response:
-                            picker_data = json.loads(response.read().decode("utf-8"))
-                        access_token = picker_data.get("access_token", "")
-                        if not access_token:
-                            raise ValueError("Missing short-lived access token")
-                        # Token is supplied only to the browser picker for this session; it is never placed in the URL or database.
-                        picker_html = """<!doctype html><html><head><meta charset="utf-8"><script src="https://apis.google.com/js/api.js"></script></head><body style="font-family:sans-serif;color:#173b61"><p>正在載入 Google Drive 資料夾選擇器…</p><script>
-const token = __TOKEN__;
-const apiKey = __API_KEY__;
-const appId = __APP_ID__;
-function onApiLoad(){gapi.load('picker',{callback:createPicker});}
-function createPicker(){
-  const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS).setSelectFolderEnabled(true).setIncludeFolders(true);
-  const builder = new google.picker.PickerBuilder().setAppId(appId).setDeveloperKey(apiKey).setOAuthToken(token).setOrigin('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app').addView(view).enableFeature(google.picker.Feature.NAV_HIDDEN).setCallback(function(data){
-    if(data.action === google.picker.Action.PICKED && data.docs && data.docs.length){
-      const folder = data.docs[0];
-      const target = new URL('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app/');
-      target.searchParams.set('drive_folder_id', folder.id);
-      target.searchParams.set('drive_folder_name', folder.name || 'Google Drive 資料夾');
-      window.top.location.assign(target.toString());
-    }
-  });
-  const iframe = document.createElement('iframe');
-  iframe.src = builder.toUri().toString();
-  iframe.style.width = '100%';
-  iframe.style.height = '500px';
-  iframe.style.border = '0';
-  iframe.allow = 'camera; microphone';
-  document.body.innerHTML = '';
-  document.body.style.margin = '0';
-  document.body.appendChild(iframe);
-}
-if(window.gapi){onApiLoad();}else{window.addEventListener('load',onApiLoad);}
-</script></body></html>""".replace("__TOKEN__", json.dumps(access_token)).replace("__API_KEY__", json.dumps(GOOGLE_PICKER_API_KEY)).replace("__APP_ID__", json.dumps(GOOGLE_CLOUD_PROJECT_NUMBER))
-                        components.html(picker_html, height=520, scrolling=False)
-                        st.caption("請在選擇器中點選原本提供的 Google Drive 資料夾；選擇後網站會記錄資料夾位置。")
-                    except urllib.error.HTTPError as error:
-                        st.error(f"無法取得 Google Drive 短效授權（HTTP {error.code}）。請確認帳號授權及 Edge Function 設定。")
+                        admin.table("site_settings").upsert({
+                            "setting_key": "google_drive_backup_target",
+                            "setting_value": {
+                                "folder_id": configured_drive_folder_id,
+                                "folder_name": "原本指定的 Google Drive 備份資料夾",
+                                "selected_at": datetime.now(timezone.utc).isoformat(),
+                            },
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }, on_conflict="setting_key").execute()
+                        st.success("已套用原本指定的 Google Drive 資料夾。下一步會再驗證帳號是否有存取權限。")
+                        st.rerun()
                     except Exception:
-                        st.error("目前無法開啟 Google Drive 資料夾選擇器，請稍後再試。")
+                        st.error("備份資料夾設定暫時無法儲存，請稍後重新整理再試。")
 
             if not GOOGLE_DRIVE_BRIDGE_SECRET:
                 st.warning("網站端尚缺少 GOOGLE_DRIVE_BRIDGE_SECRET。請先在 Streamlit Cloud Secrets 新增這個項目，並填入與 Supabase Edge Functions 中完全相同的值；不要把值貼到聊天。")
