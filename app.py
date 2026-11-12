@@ -1357,12 +1357,25 @@ elif role == "admin":
                     st.rerun()
                 except Exception as error:
                     message = str(error)
-                    if "HttpError" in type(error).__name__:
-                        st.error("Google Drive API 拒絕存取。請確認服務帳號已加入新資料夾共用，且權限為編輯者。")
+                    error_type = type(error).__name__
+                    if error_type == "HttpError":
+                        status = getattr(getattr(error, "resp", None), "status", "未知")
+                        reason = ""
+                        try:
+                            payload = json.loads(error.content.decode("utf-8"))
+                            errors = payload.get("error", {}).get("errors", [])
+                            reason = (errors[0].get("reason", "") if errors else "")
+                        except Exception:
+                            pass
+                        st.error(f"Google Drive API 回應 HTTP {status}（{reason or '未提供原因'}）。請確認資料夾分享權限、Drive API 是否啟用，以及服務帳號是否使用正確的 Google Cloud 專案。")
+                    elif error_type == "JSONDecodeError":
+                        st.error("服務帳號憑證格式不是有效 JSON。請確認 Streamlit Cloud Secrets 的 GOOGLE_SERVICE_ACCOUNT_JSON 是完整的服務帳號 JSON 內容。")
                     elif "尚未設定" in message or "不是資料夾" in message or "沒有此資料夾" in message or "請先選定" in message:
                         st.error(message)
+                    elif error_type in ("DefaultCredentialsError", "RefreshError", "ValueError"):
+                        st.error(f"Google 服務帳號憑證驗證失敗（{error_type}）。請確認 GOOGLE_SERVICE_ACCOUNT_JSON 的 client_email、private_key、token_uri 等欄位完整，且私鑰未被截斷。")
                     else:
-                        st.error("資料夾驗證或建立失敗，請確認服務帳號憑證與 Google Drive API 設定；詳細憑證不會顯示。")
+                        st.error(f"備份目錄建立失敗，錯誤類型：{error_type}。請將這段錯誤類型回報給我；系統不會顯示私鑰或完整憑證。")
 
             if not GOOGLE_DRIVE_BRIDGE_SECRET:
                 st.warning("網站端尚缺少 GOOGLE_DRIVE_BRIDGE_SECRET。請先在 Streamlit Cloud Secrets 新增這個項目，並填入與 Supabase Edge Functions 中完全相同的值；不要把值貼到聊天。")
