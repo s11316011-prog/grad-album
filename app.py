@@ -1258,8 +1258,8 @@ elif role == "admin":
             if backup_target.get("folder_id"):
                 st.info(f"目前選定的上層資料夾：{backup_target.get('folder_name') or 'Google Drive 資料夾'}")
 
-            configured_drive_folder_id = str(st.secrets.get("GOOGLE_DRIVE_FOLDER_ID", "")).strip()
-            if st.button("📁 使用原本設定的 Google Drive 資料夾", use_container_width=True, key="use_configured_google_drive_folder"):
+            configured_drive_folder_id = "1rircJAqx8GHJOYctnq-2Ro-h309vKRj7"
+            if st.button("📁 使用新的 Google Drive 備份資料夾", use_container_width=True, key="use_configured_google_drive_folder"):
                 if not configured_drive_folder_id:
                     st.error("尚未設定 GOOGLE_DRIVE_FOLDER_ID，請先確認 Streamlit Cloud Secrets。")
                 else:
@@ -1268,7 +1268,7 @@ elif role == "admin":
                             "setting_key": "google_drive_backup_target",
                             "setting_value": {
                                 "folder_id": configured_drive_folder_id,
-                                "folder_name": "原本指定的 Google Drive 備份資料夾",
+                                "folder_name": "新的 Google Drive 備份資料夾",
                                 "selected_at": datetime.now(timezone.utc).isoformat(),
                             },
                             "updated_at": datetime.now(timezone.utc).isoformat(),
