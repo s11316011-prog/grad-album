@@ -375,7 +375,7 @@ st.caption("畢冊製作組發布的重要通知、拍攝異動及活動提醒�
 try:
     public_notice_rows = (
         admin.table("announcements")
-        .select("title, content, category, is_pinned, publish_at, expires_at, status")
+        .select("title, content, category, is_pinned, publish_at, expires_at, status, image_paths")
         .eq("status", "published")
         .limit(100)
         .execute().data
@@ -420,6 +420,11 @@ try:
                 st.caption("　｜　".join(public_flags))
                 st.markdown(f"**{public_notice.get('title') or '未命名公告'}**")
                 st.write(public_notice.get("content") or "")
+                for public_image_path in (public_notice.get("image_paths") or []):
+                    try:
+                        st.image(make_url(public_image_path), use_container_width=True)
+                    except Exception:
+                        st.caption("公告附圖目前無法讀取，請稍後重新整理。")
                 st.caption(
                     "發布時間：" + public_publish_at.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
                 )
@@ -1451,6 +1456,13 @@ elif role == "admin":
             }
             selected_template = st.selectbox("公告範本（可再自行修改）", list(announcement_templates.keys()))
             template_data = announcement_templates[selected_template]
+            new_notice_images = st.file_uploader(
+                "📷 上傳公告照片（可一次選取多張）",
+                type=["jpg", "jpeg", "png", "webp"],
+                accept_multiple_files=True,
+                key="new_announcement_images",
+                help="支援 JPG、PNG、WEBP，每張照片上限 10 MB。",
+            )
             with st.form("create_announcement_form", clear_on_submit=True):
                 new_notice_title = st.text_input("公告標題", value=template_data["title"], placeholder="例如：明日拍攝時間調整")
                 new_notice_category = st.selectbox("公告類型", announcement_categories, index=announcement_categories.index(template_data["category"]))
@@ -1472,7 +1484,7 @@ elif role == "admin":
                         st.error("下架日期必須晚於發布時間。")
                     else:
                         try:
-                            admin.table("announcements").insert({
+                            created_notice = admin.table("announcements").insert({
                                 "title": new_notice_title.strip(),
                                 "content": new_notice_content.strip(),
                                 "category": new_notice_category,
@@ -1480,7 +1492,28 @@ elif role == "admin":
                                 "is_pinned": new_notice_pin,
                                 "publish_at": publish_dt.astimezone(timezone.utc).isoformat(),
                                 "expires_at": expiry_dt.astimezone(timezone.utc).isoformat() if expiry_dt else None,
-                            }).execute()
+                                "image_paths": [],
+                            }).execute().data
+                            created_notice_id = created_notice[0]["id"] if created_notice else None
+                            if new_notice_images and created_notice_id is not None:
+                                uploaded_paths = []
+                                for image_file in new_notice_images:
+                                    image_data, image_mime, image_error = image_info(image_file)
+                                    if image_error:
+                                        st.warning(f"{image_file.name}：{image_error}，已略過此照片。")
+                                        continue
+                                    extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[image_mime]
+                                    image_path = f"announcements/{created_notice_id}/{uuid.uuid4().hex}.{extension}"
+                                    try:
+                                        upload_photo(image_path, image_data, image_mime)
+                                        uploaded_paths.append(image_path)
+                                    except Exception:
+                                        st.warning(f"{image_file.name} 上傳失敗。")
+                                if uploaded_paths:
+                                    admin.table("announcements").update({
+                                        "image_paths": uploaded_paths,
+                                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                                    }).eq("id", created_notice_id).execute()
                             st.success("公告已建立。")
                             st.rerun()
                         except Exception:
@@ -1539,6 +1572,48 @@ elif role == "admin":
                                     st.rerun()
                                 except Exception:
                                     st.error("公告更新失敗，請稍後再試。")
+                    existing_notice_images = notice.get("image_paths") or []
+                    if existing_notice_images:
+                        st.caption(f"目前已附加 {len(existing_notice_images)} 張照片")
+                        for existing_image_path in existing_notice_images:
+                            try:
+                                st.image(make_url(existing_image_path), width=260)
+                            except Exception:
+                                st.caption("既有公告照片目前無法預覽。")
+                    edit_notice_images = st.file_uploader(
+                        "📷 為這則公告新增照片",
+                        type=["jpg", "jpeg", "png", "webp"],
+                        accept_multiple_files=True,
+                        key=f"edit_announcement_images_{notice_id}",
+                        help="支援 JPG、PNG、WEBP，每張照片上限 10 MB；新照片會保留原有附圖。",
+                    )
+                    if st.button(
+                        "上傳公告照片",
+                        key=f"upload_announcement_images_{notice_id}",
+                        disabled=not edit_notice_images,
+                    ):
+                        uploaded_paths = list(existing_notice_images)
+                        for image_file in edit_notice_images or []:
+                            image_data, image_mime, image_error = image_info(image_file)
+                            if image_error:
+                                st.warning(f"{image_file.name}：{image_error}，已略過此照片。")
+                                continue
+                            extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[image_mime]
+                            image_path = f"announcements/{notice_id}/{uuid.uuid4().hex}.{extension}"
+                            try:
+                                upload_photo(image_path, image_data, image_mime)
+                                uploaded_paths.append(image_path)
+                            except Exception:
+                                st.warning(f"{image_file.name} 上傳失敗。")
+                        try:
+                            admin.table("announcements").update({
+                                "image_paths": uploaded_paths,
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            }).eq("id", notice_id).execute()
+                            st.success("公告照片已上傳。")
+                            st.rerun()
+                        except Exception:
+                            st.error("照片已上傳，但公告附圖資料更新失敗，請聯絡管理員處理。")
                     delete_confirm = st.checkbox("我確認永久刪除此公告", key=f"notice_delete_confirm_{notice_id}")
                     if st.button("🗑️ 永久刪除公告", disabled=not delete_confirm, key=f"delete_notice_{notice_id}"):
                         try:
