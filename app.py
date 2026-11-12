@@ -1282,7 +1282,7 @@ const appId = __APP_ID__;
 function onApiLoad(){gapi.load('picker',{callback:createPicker});}
 function createPicker(){
   const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS).setSelectFolderEnabled(true).setIncludeFolders(true);
-  const picker = new google.picker.PickerBuilder().setAppId(appId).setDeveloperKey(apiKey).setOAuthToken(token).setOrigin('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app').addView(view).enableFeature(google.picker.Feature.NAV_HIDDEN).setCallback(function(data){
+  const picker = new google.picker.PickerBuilder().setAppId(appId).setDeveloperKey(apiKey).setOAuthToken(token).setOrigin('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app').setRelayUrl('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app/favicon.ico').addView(view).enableFeature(google.picker.Feature.NAV_HIDDEN).setCallback(function(data){
     if(data.action === google.picker.Action.PICKED && data.docs && data.docs.length){
       const folder = data.docs[0];
       const target = new URL('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app/');
