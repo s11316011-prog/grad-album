@@ -6,6 +6,8 @@ import hmac
 import secrets
 import json
 import time
+import urllib.request
+import urllib.error
 from importlib.metadata import version
 from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
@@ -21,6 +23,8 @@ st.set_page_config(
 SUPABASE_URL = st.secrets["SUPABASE_URL"].strip().rstrip("/")
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 SUPABASE_SECRET_KEY = st.secrets["SUPABASE_SECRET_KEY"]
+GOOGLE_DRIVE_BRIDGE_SECRET = st.secrets.get("GOOGLE_DRIVE_BRIDGE_SECRET", "")
+GOOGLE_DRIVE_OAUTH_FUNCTION_URL = "https://yxbjluynjjxyjkrmihyz.supabase.co/functions/v1/google-drive-oauth"
 # 舊管理員 Secrets 僅用於第一次啟動時遷移至 Supabase，完成後可從 ST Secrets 移除。
 BOOTSTRAP_ADMIN_ACCOUNTS = []
 for admin_no in range(1, 6):
@@ -1185,10 +1189,73 @@ elif role == "admin":
     st.caption("公告與學生頁面內容集中管理；其他功能依序排列。")
     tab_labels = ["📢 公告與內容", "🖼️ 全班照片", "👥 分組管理", "👤 人員管理", "⚙️ 顯示設定"]
     if is_full_admin:
-        tab_labels.append("🔐 帳號管理")
+        tab_labels.extend(["☁️ Google Drive 備份", "🔐 帳號管理"])
     created_tabs = st.tabs(tab_labels)
     announcement_tab, photo_tab, signup_tab, personnel_tab, display_settings_tab = created_tabs[:5]
-    staff_tab = created_tabs[5] if is_full_admin else None
+    drive_backup_tab = created_tabs[5] if is_full_admin else None
+    staff_tab = created_tabs[6] if is_full_admin else None
+    if drive_backup_tab is not None:
+        with drive_backup_tab:
+            st.subheader("☁️ Google Drive 自動備份整合")
+            st.caption("先完成 Google 帳號授權；目前這一步只建立安全連線，不會移動、刪除或覆蓋既有照片。")
+            oauth_result = st.query_params.get("google_drive_oauth", "")
+            if oauth_result:
+                if oauth_result == "success":
+                    st.success("Google 帳號授權成功！已安全保存加密的更新權杖。")
+                elif oauth_result == "denied":
+                    st.warning("你取消了 Google 授權，網站資料沒有變更。")
+                elif oauth_result == "invalid_state":
+                    st.error("授權驗證已逾時或無效，請重新開始授權。")
+                else:
+                    st.error("Google 授權未完成，請重新嘗試；若持續發生，請檢查 Edge Function 記錄。")
+                try:
+                    del st.query_params["google_drive_oauth"]
+                except Exception:
+                    pass
+
+            try:
+                drive_config_rows = admin.table("site_settings").select("setting_value").eq("setting_key", "google_drive_oauth_config").limit(1).execute().data
+                drive_config = (drive_config_rows or [{}])[0].get("setting_value") or {}
+            except Exception:
+                drive_config = {}
+                st.warning("目前無法讀取 Google Drive 授權狀態，請稍後重新整理。")
+
+            if drive_config.get("account_email"):
+                st.success(f"已連結 Google 帳號：{drive_config['account_email']}")
+                if drive_config.get("connected_at"):
+                    st.caption(f"連結時間：{drive_config['connected_at']}")
+            else:
+                st.info("尚未連結 Google 帳號。")
+
+            if not GOOGLE_DRIVE_BRIDGE_SECRET:
+                st.warning("網站端尚缺少 GOOGLE_DRIVE_BRIDGE_SECRET。請先在 Streamlit Cloud Secrets 新增這個項目，並填入與 Supabase Edge Functions 中完全相同的值；不要把值貼到聊天。")
+            elif st.button("🔗 連結畢冊專用 Google 帳號", type="primary", use_container_width=True, key="start_google_drive_oauth"):
+                try:
+                    request_data = json.dumps({"action": "start", "environment": "production"}).encode("utf-8")
+                    request = urllib.request.Request(
+                        GOOGLE_DRIVE_OAUTH_FUNCTION_URL,
+                        data=request_data,
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-bridge-secret": GOOGLE_DRIVE_BRIDGE_SECRET,
+                        },
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(request, timeout=20) as response:
+                        oauth_data = json.loads(response.read().decode("utf-8"))
+                    authorization_url = oauth_data.get("authorization_url", "")
+                    if not authorization_url.startswith("https://accounts.google.com/"):
+                        raise ValueError("授權網址格式不正確")
+                    st.session_state["google_drive_authorization_url"] = authorization_url
+                    st.success("已準備好 Google 授權，請按下方按鈕繼續。")
+                except urllib.error.HTTPError as error:
+                    st.error(f"無法啟動 Google 授權（HTTP {error.code}），請確認 Streamlit 與 Supabase 的橋接密鑰一致。")
+                except Exception:
+                    st.error("目前無法啟動 Google 授權，請確認網路及 Edge Function 設定後再試。")
+
+            if st.session_state.get("google_drive_authorization_url"):
+                st.link_button("前往 Google 完成授權", st.session_state["google_drive_authorization_url"], use_container_width=True)
+                st.caption("請使用畢冊製作專用 Google 帳號登入並同意授權。完成後會自動返回本網站。")
     with signup_tab:
         st.subheader("學生自行組隊結果")
         st.caption("學生由組長建立小組並一次送出；每位學生只能屬於一組。管理員可查看各組名單及尚未組隊的學生。")
