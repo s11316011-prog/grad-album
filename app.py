@@ -1285,7 +1285,7 @@ function createPicker(){
   const picker = new google.picker.PickerBuilder().setAppId(appId).setDeveloperKey(apiKey).setOAuthToken(token).addView(view).enableFeature(google.picker.Feature.NAV_HIDDEN).setCallback(function(data){
     if(data.action === google.picker.Action.PICKED && data.docs && data.docs.length){
       const folder = data.docs[0];
-      const target = new URL(window.parent.location.href);
+      const target = new URL('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app/');
       target.searchParams.set('drive_folder_id', folder.id);
       target.searchParams.set('drive_folder_name', folder.name || 'Google Drive 資料夾');
       window.top.location.assign(target.toString());
