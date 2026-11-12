@@ -1532,7 +1532,25 @@ elif role == "admin":
             )
             if not notice_rows:
                 st.info("目前還沒有公告，先使用上方表單建立第一則公告。")
-            for notice in notice_rows:
+            active_notice_rows = []
+            archived_notice_rows = []
+            for row in notice_rows:
+                row_status = row.get("status")
+                row_expiry = row.get("expires_at")
+                is_expired = False
+                if row_expiry:
+                    try:
+                        expiry_value = datetime.fromisoformat(row_expiry.replace("Z", "+00:00"))
+                        is_expired = expiry_value <= now_taipei
+                    except Exception:
+                        is_expired = False
+                if row_status == "archived" or is_expired:
+                    archived_notice_rows.append(row)
+                else:
+                    active_notice_rows.append(row)
+            if not active_notice_rows:
+                st.info("目前沒有進行中或草稿公告。")
+            for notice in active_notice_rows:
                 notice_id = notice["id"]
                 status_label = {"draft": "草稿", "published": "已發布／排程中", "archived": "已下架"}.get(notice.get("status"), "未知")
                 pin_label = "📌 " if notice.get("is_pinned") else ""
@@ -1627,6 +1645,33 @@ elif role == "admin":
                             st.error("公告刪除失敗，請稍後再試。")
         except Exception:
             st.error("公告清單讀取失敗，請確認 announcements 資料表已建立。")
+        with st.expander(f"📦 封存區（{len(archived_notice_rows)} 則）", expanded=False):
+            st.caption("已過下架日期或手動封存的公告會保留在這裡，不會出現在訪客公告區。原始標題、內容、照片及建立時間都會保留。")
+            if not archived_notice_rows:
+                st.info("目前沒有封存公告。公告到期後會自動收進這裡。")
+            for archived_notice in archived_notice_rows:
+                archived_id = archived_notice["id"]
+                archived_status = "已封存" if archived_notice.get("status") == "archived" else "已到期"
+                with st.expander(f"📄 {archived_notice.get('title') or '未命名公告'}｜{archived_status}", expanded=False):
+                    st.caption(f"分類：{archived_notice.get('category') or '一般通知'}")
+                    st.caption(f"建立時間：{archived_notice.get('created_at') or '未記錄'}")
+                    st.write(archived_notice.get("content") or "")
+                    archived_images = archived_notice.get("image_paths") or []
+                    for archived_image in archived_images:
+                        try:
+                            st.image(make_url(archived_image), width=260)
+                        except Exception:
+                            st.caption("這張公告照片目前無法預覽，但原始檔案紀錄仍保留。")
+                    if st.button("↩️ 移出封存（設為草稿）", key=f"restore_archived_notice_{archived_id}"):
+                        try:
+                            admin.table("announcements").update({
+                                "status": "draft",
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            }).eq("id", archived_id).execute()
+                            st.success("公告已移出封存並還原為草稿；如要重新公開，請到公告清單修改發布狀態。")
+                            st.rerun()
+                        except Exception:
+                            st.error("還原公告失敗，請稍後再試。")
         with st.expander("✏️ 學生頁面內容設定", expanded=False):
             st.caption("修改學生頁面會顯示的拍攝資訊與照片繳交說明；其他既有文字設定會原樣保留。")
             try:
