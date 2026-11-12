@@ -333,22 +333,92 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
 .hero h1 {font-size:2rem;font-weight:800;color:#173b61 !important;}
 .hero p {color:#58738e !important;}
 
-/* Unified button sizing and left-side navigation for Streamlit tab groups. */
-[data-testid="stTabs"] {display:grid !important;grid-template-columns:minmax(180px,220px) minmax(0,1fr) !important;column-gap:1.25rem !important;align-items:start !important;}
-[data-testid="stTabs"] > div:first-child[role="tablist"] {display:flex !important;flex-direction:column !important;align-items:stretch !important;gap:.35rem !important;border-right:1px solid #c7d9e9 !important;border-bottom:0 !important;padding:.25rem .65rem .25rem 0 !important;min-width:0 !important;}
-[data-testid="stTabs"] button[role="tab"] {justify-content:flex-start !important;width:100% !important;min-height:2.65rem !important;border-radius:.65rem !important;padding:.65rem .8rem !important;background:transparent !important;border:1px solid transparent !important;white-space:normal !important;text-align:left !important;}
-[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {background:#dcecf9 !important;border-color:#b8d1e7 !important;}
-[data-testid="stTabs"] > div:nth-child(2) {min-width:0 !important;padding-top:.1rem !important;}
-.stButton button,[data-testid="stBaseButton"],[data-testid="stFormSubmitButton"] button,[data-testid="stDownloadButton"] button,[data-testid="stLinkButton"] a {min-height:2.65rem !important;height:auto !important;border-radius:.65rem !important;padding:.55rem 1rem !important;font-weight:600 !important;white-space:normal !important;}
-@media (max-width:760px) {
-.block-container {padding:1rem .8rem 2rem !important;}
-[data-testid="stMainBlockContainer"] {padding-top:1.2rem !important;}
-[data-testid="stTabs"] {grid-template-columns:minmax(0,1fr) !important;row-gap:.65rem !important;}
-[data-testid="stTabs"] > div:first-child[role="tablist"] {flex-direction:row !important;overflow-x:auto !important;flex-wrap:nowrap !important;border-right:0 !important;border-bottom:1px solid #c7d9e9 !important;padding:0 0 .5rem !important;gap:.4rem !important;}
-[data-testid="stTabs"] button[role="tab"] {width:auto !important;min-width:max-content !important;min-height:2.5rem !important;padding:.55rem .75rem !important;}
-[data-testid="stTabs"] > div:nth-child(2) {padding-top:.25rem !important;}
-.hero h1 {font-size:1.55rem !important;}
-.stButton button,[data-testid="stBaseButton"],[data-testid="stFormSubmitButton"] button,[data-testid="stDownloadButton"] button,[data-testid="stLinkButton"] a {width:100% !important;}
+/* Responsive B-layout: desktop uses a vertical navigation rail; mobile keeps the same
+   navigation as a horizontally scrollable strip. Target both Streamlit DOM variants. */
+[data-testid="stTabs"] {
+  display: grid !important;
+  grid-template-columns: minmax(190px, 230px) minmax(0, 1fr) !important;
+  column-gap: 1.25rem !important;
+  align-items: start !important;
+  min-width: 0 !important;
+}
+[data-testid="stTabs"] > div:first-child {
+  min-width: 0 !important;
+}
+[data-testid="stTabs"] [role="tablist"] {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: .4rem !important;
+  border-right: 1px solid #c7d9e9 !important;
+  border-bottom: 0 !important;
+  padding: .25rem .7rem .25rem 0 !important;
+  min-width: 0 !important;
+}
+[data-testid="stTabs"] button[role="tab"] {
+  display: flex !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  min-height: 2.7rem !important;
+  height: auto !important;
+  border-radius: .7rem !important;
+  padding: .65rem .8rem !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  white-space: normal !important;
+  text-align: left !important;
+  line-height: 1.35 !important;
+}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+  background: #dcecf9 !important;
+  border-color: #b8d1e7 !important;
+}
+[data-testid="stTabs"] [role="tabpanel"] {
+  min-width: 0 !important;
+  padding: .1rem 0 0 !important;
+}
+.stButton button, [data-testid="stBaseButton"],
+[data-testid="stFormSubmitButton"] button, [data-testid="stDownloadButton"] button,
+[data-testid="stLinkButton"] a {
+  min-height: 2.7rem !important;
+  height: auto !important;
+  border-radius: .7rem !important;
+  padding: .6rem 1rem !important;
+  font-weight: 600 !important;
+  white-space: normal !important;
+  line-height: 1.35 !important;
+}
+@media (max-width: 760px) {
+  .block-container { max-width: 100% !important; padding: 1rem .8rem 2rem !important; }
+  [data-testid="stMainBlockContainer"] { padding-top: 1.2rem !important; }
+  [data-testid="stTabs"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+    row-gap: .65rem !important;
+  }
+  [data-testid="stTabs"] [role="tablist"] {
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    flex-wrap: nowrap !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid #c7d9e9 !important;
+    padding: 0 0 .55rem !important;
+    gap: .4rem !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  [data-testid="stTabs"] button[role="tab"] {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: max-content !important;
+    min-height: 2.55rem !important;
+    padding: .55rem .8rem !important;
+    white-space: nowrap !important;
+  }
+  [data-testid="stTabs"] [role="tabpanel"] { padding-top: .2rem !important; }
+  .hero h1 { font-size: 1.55rem !important; }
+  .stButton button, [data-testid="stBaseButton"],
+  [data-testid="stFormSubmitButton"] button, [data-testid="stDownloadButton"] button,
+  [data-testid="stLinkButton"] a { width: 100% !important; }
 }
 </style>
 """, unsafe_allow_html=True)
