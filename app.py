@@ -12,7 +12,7 @@ import streamlit.components.v1 as components
 from importlib.metadata import version
 from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials as GoogleOAuthCredentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io
@@ -61,16 +61,29 @@ supabase, admin = get_clients(SUPABASE_URL, SUPABASE_KEY, SUPABASE_SECRET_KEY)
 
 
 def get_google_drive_service():
-    raw_credentials = st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-    if not raw_credentials:
-        raise RuntimeError("尚未設定 Google 服務帳號憑證")
-    if isinstance(raw_credentials, str):
-        credentials_info = json.loads(raw_credentials)
-    else:
-        credentials_info = dict(raw_credentials)
-    credentials = service_account.Credentials.from_service_account_info(
-        credentials_info,
-        scopes=["https://www.googleapis.com/auth/drive"],
+    """Build Drive API client using the linked user's OAuth identity."""
+    if not GOOGLE_DRIVE_BRIDGE_SECRET:
+        raise RuntimeError("尚未設定 Google Drive 安全連線，請先完成網站授權設定")
+    request_data = json.dumps({"action": "picker_token", "environment": "production"}).encode("utf-8")
+    request = urllib.request.Request(
+        GOOGLE_DRIVE_OAUTH_FUNCTION_URL,
+        data=request_data,
+        headers={"Content-Type": "application/json", "x-bridge-secret": GOOGLE_DRIVE_BRIDGE_SECRET},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            token_data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        if error.code == 409:
+            raise RuntimeError("尚未連結 Google 帳號，請先完成授權")
+        raise RuntimeError(f"無法取得 Google Drive 使用者授權（HTTP {error.code}）")
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise RuntimeError("Google Drive 使用者授權已失效，請重新連結 Google 帳號")
+    credentials = GoogleOAuthCredentials(
+        token=access_token,
+        scopes=["https://www.googleapis.com/auth/drive.file"],
     )
     return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
@@ -1397,7 +1410,7 @@ elif role == "admin":
     if drive_backup_tab is not None:
         with drive_backup_tab:
             st.subheader("☁️ Google Drive 自動備份整合")
-            st.caption("先完成 Google 帳號授權；目前這一步只建立安全連線，不會移動、刪除或覆蓋既有照片。")
+            st.caption("使用已連結的個人 Google 帳號儲存空間備份；原始照片會保留在 Supabase，不會移動或刪除。")
             oauth_result = st.query_params.get("google_drive_oauth", "")
             if oauth_result:
                 if oauth_result == "success":
@@ -1470,7 +1483,7 @@ elif role == "admin":
                             },
                             "updated_at": datetime.now(timezone.utc).isoformat(),
                         }, on_conflict="setting_key").execute()
-                        st.success("已套用新的 Google Drive 備份資料夾。下一步會驗證服務帳號的存取權限。")
+                        st.success("已套用新的 Google Drive 備份資料夾。下一步會使用已連結的 Google 個人帳號驗證存取權限。")
                         st.rerun()
                     except Exception:
                         st.error("備份資料夾設定暫時無法儲存，請稍後重新整理再試。")
@@ -1492,7 +1505,7 @@ elif role == "admin":
                     if parent.get("mimeType") != "application/vnd.google-apps.folder":
                         raise RuntimeError("指定的 Google Drive 項目不是資料夾")
                     if not parent.get("capabilities", {}).get("canAddChildren", False):
-                        raise RuntimeError("服務帳號沒有此資料夾的新增子資料夾權限，請確認已分享給服務帳號且權限為編輯者")
+                        raise RuntimeError("目前連結的 Google 帳號沒有此資料夾的新增子資料夾權限，請確認登入帳號及資料夾權限")
                     root_id, root_created = ensure_drive_folder(service, parent_id, "畢業紀念冊照片總備份")
                     folder_names = ["01_個人生活照", "02_小組合照", "03_班級團體照", "04_公告圖片", "05_備份紀錄"]
                     child_results = {}
@@ -1526,13 +1539,13 @@ elif role == "admin":
                             reason = (errors[0].get("reason", "") if errors else "")
                         except Exception:
                             pass
-                        st.error(f"Google Drive API 回應 HTTP {status}（{reason or '未提供原因'}）。請確認資料夾分享權限、Drive API 是否啟用，以及服務帳號是否使用正確的 Google Cloud 專案。")
+                        st.error(f"Google Drive API 回應 HTTP {status}（{reason or '未提供原因'}）。請確認目前連結的 Google 個人帳號是否能存取所選資料夾。")
                     elif error_type == "JSONDecodeError":
-                        st.error("服務帳號憑證格式不是有效 JSON。請確認 Streamlit Cloud Secrets 的 GOOGLE_SERVICE_ACCOUNT_JSON 是完整的服務帳號 JSON 內容。")
+                        st.error("Google Drive 授權回應格式不正確，請重新連結 Google 帳號。")
                     elif "尚未設定" in message or "不是資料夾" in message or "沒有此資料夾" in message or "請先選定" in message:
                         st.error(message)
                     elif error_type in ("DefaultCredentialsError", "RefreshError", "ValueError"):
-                        st.error(f"Google 服務帳號憑證驗證失敗（{error_type}）。請確認 GOOGLE_SERVICE_ACCOUNT_JSON 的 client_email、private_key、token_uri 等欄位完整，且私鑰未被截斷。")
+                        st.error(f"Google Drive 使用者授權驗證失敗（{error_type}）。請重新連結 Google 帳號後再試。")
                     else:
                         st.error(f"備份目錄建立失敗，錯誤類型：{error_type}。請將這段錯誤類型回報給我；系統不會顯示私鑰或完整憑證。")
 
