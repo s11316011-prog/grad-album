@@ -1205,7 +1205,7 @@ elif role == "admin":
                     pass
 
             try:
-                drive_config_rows = admin.table("site_settings").select("setting_value").eq("setting_key", "google_drive_oauth_config").limit(1).execute().data
+                drive_config_rows = admin.table("site_settings").select("setting_value").eq("setting_key", "google_drive_oauth_config_test").limit(1).execute().data
                 drive_config = (drive_config_rows or [{}])[0].get("setting_value") or {}
             except Exception:
                 drive_config = {}
@@ -1222,7 +1222,7 @@ elif role == "admin":
                 st.warning("網站端尚缺少 GOOGLE_DRIVE_BRIDGE_SECRET。請先在 Streamlit Cloud Secrets 新增這個項目，並填入與 Supabase Edge Functions 中完全相同的值；不要把值貼到聊天。")
             elif st.button("🔗 連結畢冊專用 Google 帳號", type="primary", use_container_width=True, key="start_google_drive_oauth"):
                 try:
-                    request_data = json.dumps({"action": "start"}).encode("utf-8")
+                    request_data = json.dumps({"action": "start", "environment": "test"}).encode("utf-8")
                     request = urllib.request.Request(
                         GOOGLE_DRIVE_OAUTH_FUNCTION_URL,
                         data=request_data,
