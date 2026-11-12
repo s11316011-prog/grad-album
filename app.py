@@ -368,6 +368,64 @@ except Exception:
     # 無法確認設定時採取保護性預設，避免學生端意外開放；管理員登入仍可使用。
     student_access_paused = True
 
+# 公開公告區：訪客不需登入即可查看已發布且仍在有效期間內的公告。
+# 使用僅存在於伺服器端的 admin client 讀取；不會將 Supabase Secret Key 傳給瀏覽器。
+st.subheader("📢 最新公告")
+st.caption("畢冊製作組發布的重要通知、拍攝異動及活動提醒；無須登入即可查看。")
+try:
+    public_notice_rows = (
+        admin.table("announcements")
+        .select("title, content, category, is_pinned, publish_at, expires_at, status")
+        .eq("status", "published")
+        .limit(100)
+        .execute().data
+    )
+    public_now = datetime.now(timezone.utc)
+    public_visible_notices = []
+    for public_notice in public_notice_rows:
+        try:
+            public_publish_at = datetime.fromisoformat(
+                public_notice["publish_at"].replace("Z", "+00:00")
+            )
+            if public_publish_at.tzinfo is None:
+                public_publish_at = public_publish_at.replace(tzinfo=timezone.utc)
+            if public_publish_at > public_now:
+                continue
+            public_expiry_value = public_notice.get("expires_at")
+            if public_expiry_value:
+                public_expiry_at = datetime.fromisoformat(
+                    public_expiry_value.replace("Z", "+00:00")
+                )
+                if public_expiry_at.tzinfo is None:
+                    public_expiry_at = public_expiry_at.replace(tzinfo=timezone.utc)
+                if public_expiry_at <= public_now:
+                    continue
+            public_visible_notices.append((public_notice, public_publish_at))
+        except (KeyError, TypeError, ValueError):
+            # 日期格式不正確的公告不公開顯示，避免意外提前曝光。
+            continue
+    public_visible_notices.sort(
+        key=lambda item: (bool(item[0].get("is_pinned")), item[1]),
+        reverse=True,
+    )
+    if not public_visible_notices:
+        st.info("目前沒有已發布的公告。")
+    else:
+        for public_notice, public_publish_at in public_visible_notices:
+            with st.container(border=True):
+                public_flags = []
+                if public_notice.get("is_pinned"):
+                    public_flags.append("📌 置頂")
+                public_flags.append(public_notice.get("category") or "一般通知")
+                st.caption("　｜　".join(public_flags))
+                st.markdown(f"**{public_notice.get('title') or '未命名公告'}**")
+                st.write(public_notice.get("content") or "")
+                st.caption(
+                    "發布時間：" + public_publish_at.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+                )
+except Exception:
+    st.warning("目前無法載入最新公告，請稍後重新整理。")
+
 role = current_role()
 
 if role == "student" and student_access_paused:
