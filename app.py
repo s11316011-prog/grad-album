@@ -130,6 +130,7 @@ def backup_supabase_photos_to_drive(service, folder_ids):
         "log_written": False,
     }
     failed_types = set()
+    failed_details = set()
     for storage_path in paths:
         category = classify_backup_folder(storage_path)
         if not category or category not in folder_ids:
@@ -191,8 +192,35 @@ def backup_supabase_photos_to_drive(service, folder_ids):
         except Exception as error:
             result["failed"] += 1
             failed_types.add(type(error).__name__)
+            # Keep diagnostics safe: expose only HTTP status and Google's
+            # structured reason/message, never raw response bodies or credentials.
+            status = getattr(getattr(error, "resp", None), "status", None)
+            detail_parts = [type(error).__name__]
+            if status:
+                detail_parts.append(f"HTTP {status}")
+            reason = ""
+            google_message = ""
+            error_content = getattr(error, "content", None)
+            if error_content:
+                try:
+                    if isinstance(error_content, bytes):
+                        error_content = error_content.decode("utf-8", errors="replace")
+                    payload = json.loads(error_content)
+                    google_error = payload.get("error", {}) if isinstance(payload, dict) else {}
+                    errors = google_error.get("errors", []) if isinstance(google_error, dict) else []
+                    if errors and isinstance(errors[0], dict):
+                        reason = str(errors[0].get("reason", ""))[:120]
+                    google_message = str(google_error.get("message", ""))[:180] if isinstance(google_error, dict) else ""
+                except Exception:
+                    pass
+            if reason:
+                detail_parts.append(f"reason={reason}")
+            if google_message:
+                detail_parts.append(f"message={google_message}")
+            failed_details.add("；".join(detail_parts))
 
     result["failed_types"] = sorted(failed_types)
+    result["failed_details"] = sorted(failed_details)
 
     # Write a compact audit record only after a completely successful batch.
     if result["uploaded"] > 0 and result["failed"] == 0 and result["unclassified"] == 0:
@@ -1543,6 +1571,10 @@ elif role == "admin":
                         )
                         if backup_result["failed_types"]:
                             st.caption("錯誤類型：" + "、".join(backup_result["failed_types"]))
+                        if backup_result.get("failed_details"):
+                            st.error("Google Drive 回傳的診斷資訊：")
+                            for detail in backup_result["failed_details"]:
+                                st.code(detail)
                     elif backup_result["uploaded"]:
                         st.success(
                             f"照片備份完成！新增 {backup_result['uploaded']} 個檔案，"
