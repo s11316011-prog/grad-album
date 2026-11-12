@@ -1020,52 +1020,52 @@ if role == "student":
                 st.markdown("### 📢 公告中心")
                 st.caption("首頁公告已收合；點選左側「公告中心」即可查看所有公告與附圖。")
             
-        show_class_group_roster = student_display_settings["show_class_group_roster"]
-        if show_class_group_roster:
-            st.subheader(student_content["roster_title"])
-            st.caption(student_content["roster_caption"])
-            try:
-                roster_students = (
-                    admin.table("grad_album")
-                    .select("id, seat_no, name")
-                    .order("seat_no").execute().data
-                )
-                roster_signups = (
-                    admin.table("group_signups")
-                    .select("student_id, assigned_group")
-                    .execute().data
-                )
-                roster_leader_rows = admin.table("group_leaders").select("group_number, leader_student_id").execute().data
-                roster_leaders = {item["group_number"]: item["leader_student_id"] for item in roster_leader_rows}
-                roster_groups = {}
-                roster_assigned_ids = set()
-                for signup in roster_signups:
-                    group_no = signup.get("assigned_group")
-                    student_id = signup.get("student_id")
-                    if group_no is not None and student_id is not None:
-                        roster_groups.setdefault(group_no, []).append(student_id)
-                        roster_assigned_ids.add(student_id)
-                if roster_groups:
-                    group_numbers = sorted(roster_groups)
-                    group_columns = st.columns(min(3, len(group_numbers)))
-                    for index, group_no in enumerate(group_numbers):
-                        with group_columns[index % len(group_columns)]:
-                            with st.container(border=True):
-                                st.markdown(student_content["roster_group_title"].format(group_no=group_no))
-                                member_ids = set(roster_groups[group_no])
-                                group_members = [student for student in roster_students if student.get("id") in member_ids]
-                                for member in group_members:
-                                    leader_prefix = student_content["roster_leader_prefix"] if member.get("id") == roster_leaders.get(group_no) else ""
-                                    st.write(student_content["roster_member_format"].format(seat_no=member.get("seat_no"), leader_prefix=leader_prefix, name=member.get("name")))
-                else:
-                    st.info(student_content["roster_empty"])
-                roster_unassigned = [student for student in roster_students if student.get("id") not in roster_assigned_ids]
-                if roster_unassigned:
-                    with st.expander(student_content["roster_unassigned_label"].format(count=len(roster_unassigned))):
-                        for student in roster_unassigned:
-                            st.write(student_content["roster_unassigned_member_format"].format(seat_no=student.get("seat_no"), name=student.get("name")))
-            except Exception:
-                st.warning(student_content["roster_load_error"])
+            show_class_group_roster = student_display_settings["show_class_group_roster"]
+            if show_class_group_roster:
+                st.subheader(student_content["roster_title"])
+                st.caption(student_content["roster_caption"])
+                try:
+                    roster_students = (
+                        admin.table("grad_album")
+                        .select("id, seat_no, name")
+                        .order("seat_no").execute().data
+                    )
+                    roster_signups = (
+                        admin.table("group_signups")
+                        .select("student_id, assigned_group")
+                        .execute().data
+                    )
+                    roster_leader_rows = admin.table("group_leaders").select("group_number, leader_student_id").execute().data
+                    roster_leaders = {item["group_number"]: item["leader_student_id"] for item in roster_leader_rows}
+                    roster_groups = {}
+                    roster_assigned_ids = set()
+                    for signup in roster_signups:
+                        group_no = signup.get("assigned_group")
+                        student_id = signup.get("student_id")
+                        if group_no is not None and student_id is not None:
+                            roster_groups.setdefault(group_no, []).append(student_id)
+                            roster_assigned_ids.add(student_id)
+                    if roster_groups:
+                        group_numbers = sorted(roster_groups)
+                        group_columns = st.columns(min(3, len(group_numbers)))
+                        for index, group_no in enumerate(group_numbers):
+                            with group_columns[index % len(group_columns)]:
+                                with st.container(border=True):
+                                    st.markdown(student_content["roster_group_title"].format(group_no=group_no))
+                                    member_ids = set(roster_groups[group_no])
+                                    group_members = [student for student in roster_students if student.get("id") in member_ids]
+                                    for member in group_members:
+                                        leader_prefix = student_content["roster_leader_prefix"] if member.get("id") == roster_leaders.get(group_no) else ""
+                                        st.write(student_content["roster_member_format"].format(seat_no=member.get("seat_no"), leader_prefix=leader_prefix, name=member.get("name")))
+                    else:
+                        st.info(student_content["roster_empty"])
+                    roster_unassigned = [student for student in roster_students if student.get("id") not in roster_assigned_ids]
+                    if roster_unassigned:
+                        with st.expander(student_content["roster_unassigned_label"].format(count=len(roster_unassigned))):
+                            for student in roster_unassigned:
+                                st.write(student_content["roster_unassigned_member_format"].format(seat_no=student.get("seat_no"), name=student.get("name")))
+                except Exception:
+                    st.warning(student_content["roster_load_error"])
     if "show_personal_photo_upload" in student_tab_map:
         with student_tab_map["show_personal_photo_upload"]:
             st.subheader(student_content["upload_title"])
