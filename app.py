@@ -624,9 +624,9 @@ if role == "student":
         "group_joined": "你已加入第 {group_no} 組，不能再加入其他組別。",
         "group_member_title": "**第 {group_no} 組組員名單**",
         "group_photo_title": "### 📷 本組小組合照（共 4 張）",
-        "group_leader_missing": "本組組長尚未完成上傳權限登記，請聯絡管理員協助設定。",
-        "group_photo_leader_help": "由組長統一上傳本組 4 張照片。每個欄位可重新上傳替換；每張上限 10 MB。",
-        "group_photo_member_help": "本組照片由組長統一上傳，你可以查看目前繳交進度。",
+        "group_leader_missing": "本組尚未完成組長資料設定。",
+        "group_photo_leader_help": "本組所有組員都可以上傳或替換 4 張照片；每張上限 10 MB。",
+        "group_photo_member_help": "本組所有組員都可以上傳或替換照片，也可以查看目前繳交進度。",
         "group_photo_slot": "**第 {slot} 張**",
         "group_photo_uploaded": "已繳交",
         "group_photo_missing": "尚未繳交",
@@ -910,12 +910,6 @@ if role == "student":
                     st.divider()
                     st.markdown(student_content["group_photo_title"])
                     try:
-                        leader_rows = (
-                            admin.table("group_leaders")
-                            .select("leader_student_id")
-                            .eq("group_number", my_group_no)
-                            .limit(1).execute().data
-                        )
                         photo_rows = (
                             admin.table("group_photos")
                             .select("photo_slot, storage_path")
@@ -923,15 +917,7 @@ if role == "student":
                             .order("photo_slot").execute().data
                         )
                         photo_by_slot = {row["photo_slot"]: row for row in photo_rows}
-                        is_group_leader = bool(
-                            leader_rows and leader_rows[0]["leader_student_id"] == identity["id"]
-                        )
-                        if not leader_rows:
-                            st.warning(student_content["group_leader_missing"])
-                        elif is_group_leader:
-                            st.caption(student_content["group_photo_leader_help"])
-                        else:
-                            st.caption(student_content["group_photo_member_help"])
+                        st.caption("本組所有組員都可以上傳或替換 4 張小組合照；每張上限 10 MB。")
                         photo_cols = st.columns(4)
                         for slot in range(1, 5):
                             with photo_cols[slot - 1]:
@@ -942,39 +928,38 @@ if role == "student":
                                     st.success(student_content["group_photo_uploaded"])
                                 else:
                                     st.info(student_content["group_photo_missing"])
-                                if is_group_leader:
-                                    chosen_photo = st.file_uploader(
-                                        student_content["group_photo_choose"].format(slot=slot),
-                                        type=["jpg", "jpeg", "png", "webp"],
-                                        key=f"group_photo_file_{my_group_no}_{slot}",
-                                    )
-                                    if st.button(
-                                        student_content["group_photo_upload"].format(slot=slot),
-                                        key=f"group_photo_upload_{my_group_no}_{slot}",
-                                        disabled=chosen_photo is None,
-                                    ):
-                                        photo_data, photo_mime, photo_error = image_info(chosen_photo)
-                                        if photo_error:
-                                            st.error(student_content["group_photo_upload_error"].format(error=photo_error))
-                                        else:
-                                            extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[photo_mime]
-                                            new_path = f"shoot_groups/{my_group_no}/{slot}_{uuid.uuid4().hex}.{extension}"
-                                            try:
-                                                upload_photo(new_path, photo_data, photo_mime)
-                                                old_path = existing_photo.get("storage_path") if existing_photo else None
-                                                admin.table("group_photos").upsert({
-                                                    "group_number": my_group_no,
-                                                    "photo_slot": slot,
-                                                    "leader_student_id": identity["id"],
-                                                    "storage_path": new_path,
-                                                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                                                }, on_conflict="group_number,photo_slot").execute()
-                                                if old_path:
-                                                    admin.storage.from_(BUCKET).remove([old_path])
-                                                st.success(student_content["group_photo_success"].format(slot=slot))
-                                                st.rerun()
-                                            except Exception:
-                                                st.error(student_content["group_photo_fail"].format(slot=slot))
+                                chosen_photo = st.file_uploader(
+                                    student_content["group_photo_choose"].format(slot=slot),
+                                    type=["jpg", "jpeg", "png", "webp"],
+                                    key=f"group_photo_file_{my_group_no}_{slot}",
+                                )
+                                if st.button(
+                                    student_content["group_photo_upload"].format(slot=slot),
+                                    key=f"group_photo_upload_{my_group_no}_{slot}",
+                                    disabled=chosen_photo is None,
+                                ):
+                                    photo_data, photo_mime, photo_error = image_info(chosen_photo)
+                                    if photo_error:
+                                        st.error(student_content["group_photo_upload_error"].format(error=photo_error))
+                                    else:
+                                        extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[photo_mime]
+                                        new_path = f"shoot_groups/{my_group_no}/{slot}_{uuid.uuid4().hex}.{extension}"
+                                        try:
+                                            upload_photo(new_path, photo_data, photo_mime)
+                                            old_path = existing_photo.get("storage_path") if existing_photo else None
+                                            admin.table("group_photos").upsert({
+                                                "group_number": my_group_no,
+                                                "photo_slot": slot,
+                                                "leader_student_id": identity["id"],
+                                                "storage_path": new_path,
+                                                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                                            }, on_conflict="group_number,photo_slot").execute()
+                                            if old_path:
+                                                admin.storage.from_(BUCKET).remove([old_path])
+                                            st.success(student_content["group_photo_success"].format(slot=slot))
+                                            st.rerun()
+                                        except Exception:
+                                            st.error(student_content["group_photo_fail"].format(slot=slot))
                     except Exception:
                         st.error(student_content["group_photo_error"])
                 else:
