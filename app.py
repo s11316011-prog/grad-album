@@ -1005,13 +1005,6 @@ if role == "student":
         ("show_personal_photo_rules", student_content["tab_personal_rules"]),
     ]
 
-        ("show_student_announcements", student_content["tab_announcements"]),
-        ("show_personal_photo_upload", student_content["tab_personal_upload"]),
-        ("show_my_photos", student_content["tab_my_photos"]),
-        ("show_group_signup", student_content["tab_group_signup"]),
-        ("show_class_group_photo", student_content["tab_class_photo"]),
-        ("show_personal_photo_rules", student_content["tab_personal_rules"]),
-    ]
     visible_student_tabs = [(key, label) for key, label in student_tab_specs if key == "home" or student_display_settings[key]]
     if visible_student_tabs:
         student_tab_objects = st.tabs([label for _, label in visible_student_tabs])
