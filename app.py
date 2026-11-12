@@ -1282,7 +1282,7 @@ const appId = __APP_ID__;
 function onApiLoad(){gapi.load('picker',{callback:createPicker});}
 function createPicker(){
   const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS).setSelectFolderEnabled(true).setIncludeFolders(true);
-  const picker = new google.picker.PickerBuilder().setAppId(appId).setDeveloperKey(apiKey).setOAuthToken(token).setOrigin('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app').addView(view).enableFeature(google.picker.Feature.NAV_HIDDEN).setCallback(function(data){
+  const builder = new google.picker.PickerBuilder().setAppId(appId).setDeveloperKey(apiKey).setOAuthToken(token).setOrigin('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app').addView(view).enableFeature(google.picker.Feature.NAV_HIDDEN).setCallback(function(data){
     if(data.action === google.picker.Action.PICKED && data.docs && data.docs.length){
       const folder = data.docs[0];
       const target = new URL('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app/');
@@ -1290,8 +1290,16 @@ function createPicker(){
       target.searchParams.set('drive_folder_name', folder.name || 'Google Drive 資料夾');
       window.top.location.assign(target.toString());
     }
-  }).build();
-  picker.setVisible(true);
+  });
+  const iframe = document.createElement('iframe');
+  iframe.src = builder.toUri().toString();
+  iframe.style.width = '100%';
+  iframe.style.height = '500px';
+  iframe.style.border = '0';
+  iframe.allow = 'camera; microphone';
+  document.body.innerHTML = '';
+  document.body.style.margin = '0';
+  document.body.appendChild(iframe);
 }
 if(window.gapi){onApiLoad();}else{window.addEventListener('load',onApiLoad);}
 </script></body></html>""".replace("__TOKEN__", json.dumps(access_token)).replace("__API_KEY__", json.dumps(GOOGLE_PICKER_API_KEY)).replace("__APP_ID__", json.dumps(GOOGLE_CLOUD_PROJECT_NUMBER))
