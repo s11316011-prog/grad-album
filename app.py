@@ -1290,8 +1290,7 @@ function createPicker(){
       target.searchParams.set('drive_folder_name', folder.name || 'Google Drive 資料夾');
       window.top.location.assign(target.toString());
     }
-  });
-  picker.setRelayUrl('https://grad-album-kevza6xaafopua2faoaimw.streamlit.app/favicon.ico');
+  }).build();
   picker.setVisible(true);
 }
 if(window.gapi){onApiLoad();}else{window.addEventListener('load',onApiLoad);}
