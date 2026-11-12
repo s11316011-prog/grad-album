@@ -820,39 +820,49 @@ if role == "student":
             st.info(student_content["upload_intro"])
             existing_personal_photos = list_student_photos(identity["seat_no"])
             if existing_personal_photos:
-                st.success("你已成功上傳個人生活照！系統已收到照片。每位同學限上傳 1 張。")
-            else:
-                personal_photo_file = st.file_uploader(
-                    student_content["upload_file_help"],
-                    type=["jpg", "jpeg", "png", "webp"],
-                    accept_multiple_files=False,
-                    key=f"personal_photo_upload_{identity['id']}",
-                )
-                if st.button(
-                    student_content["upload_button"],
-                    type="primary",
-                    disabled=personal_photo_file is None,
-                    key=f"personal_photo_upload_button_{identity['id']}",
-                ):
-                    if personal_photo_file is None:
-                        st.warning(student_content["upload_choose_warning"])
+                st.success("你已繳交個人生活照；若要更換，直接選擇新照片並重新上傳即可。")
+            personal_photo_file = st.file_uploader(
+                student_content["upload_file_help"],
+                type=["jpg", "jpeg", "png", "webp"],
+                accept_multiple_files=False,
+                key=f"personal_photo_upload_{identity['id']}",
+            )
+            if st.button(
+                student_content["upload_button"],
+                type="primary",
+                disabled=personal_photo_file is None,
+                key=f"personal_photo_upload_button_{identity['id']}",
+            ):
+                if personal_photo_file is None:
+                    st.warning(student_content["upload_choose_warning"])
+                else:
+                    data, mime, error = image_info(personal_photo_file)
+                    if error:
+                        st.error(student_content["upload_file_error"].format(filename=personal_photo_file.name, error=error))
                     else:
-                        # Recheck storage before upload so a second submission cannot bypass the one-photo limit.
-                        if list_student_photos(identity["seat_no"]):
-                            st.success("你已成功上傳個人生活照！系統已收到照片。每位同學限上傳 1 張。")
-                        else:
-                            data, mime, error = image_info(personal_photo_file)
-                            if error:
-                                st.error(student_content["upload_file_error"].format(filename=personal_photo_file.name, error=error))
-                            else:
-                                ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
-                                path = f"{identity['seat_no']}/{uuid.uuid4().hex}.{ext}"
+                        ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
+                        # Upload the replacement first; only remove older copies after the new file is safely stored.
+                        path = f"{identity['seat_no']}/personal_photo.{ext}"
+                        try:
+                            storage = admin.storage.from_(BUCKET)
+                            storage.upload(
+                                path=path,
+                                file=data,
+                                file_options={"content-type": mime, "upsert": "true"},
+                            )
+                            old_paths = [
+                                old_path for old_path in list_student_photos(identity["seat_no"])
+                                if old_path != path
+                            ]
+                            if old_paths:
                                 try:
-                                    upload_photo(path, data, mime)
-                                    st.success("你已成功上傳個人生活照！系統已收到照片。")
-                                    st.rerun()
+                                    storage.remove(old_paths)
                                 except Exception:
-                                    st.error(student_content["upload_fail"].format(filename=personal_photo_file.name))
+                                    st.warning("新照片已成功上傳，但舊照片未能自動清除；請聯絡畢冊製作組協助整理。")
+                            st.success("個人生活照已成功上傳／更新！")
+                            st.rerun()
+                        except Exception:
+                            st.error(student_content["upload_fail"].format(filename=personal_photo_file.name))
     if "show_my_photos" in student_tab_map:
         with student_tab_map["show_my_photos"]:
             st.subheader(student_content["my_photos_title"])
