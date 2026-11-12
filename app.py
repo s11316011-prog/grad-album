@@ -568,16 +568,17 @@ if role == "student":
 else:
     st.success(f"{identity.get('display_name') or identity.get('username') or '管理員'}，你好！")
 
-# 登入後常用操作：靠右排列，刷新不會清除登入狀態。
-toolbar_spacer, refresh_col, password_col, logout_col = st.columns([5, 1.25, 1.4, 1])
+# 登入後常用操作：縮小按鈕並固定靠右，順序為刷新、改密碼、登出。
+st.markdown('<div class="account-toolbar"></div>', unsafe_allow_html=True)
+toolbar_spacer, refresh_col, password_col, logout_col = st.columns([6, 1.05, 1.35, 0.9], gap="small")
 with refresh_col:
-    if st.button(student_ui_text("refresh_button", "🔄 刷新") if role == "student" else "🔄 刷新", use_container_width=True, key="refresh_page_button"):
+    if st.button("🔄 刷新", use_container_width=True, key="refresh_page_button", help="重新整理目前頁面，不會登出"):
         st.rerun()
 with password_col:
-    if st.button(student_ui_text("change_password_button", "🔐 更改密碼") if role == "student" else "🔐 更改密碼", use_container_width=True, key="toggle_change_password"):
+    if st.button("🔐 改密碼", use_container_width=True, key="toggle_change_password", help="修改目前登入帳號的密碼"):
         st.session_state["show_change_password_form"] = not st.session_state.get("show_change_password_form", False)
 with logout_col:
-    if st.button(student_ui_text("logout_button", "登出") if role == "student" else "登出", use_container_width=True, key="logout_button"):
+    if st.button("登出", use_container_width=True, key="logout_button", help="結束目前登入"):
         logout()
 
 if st.session_state.get("show_change_password_form", False):
@@ -1170,11 +1171,13 @@ elif role == "teacher":
 
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    tab_labels = ["📢 公告管理中心", "🧾 小組登記與分組", "🗂️ 全班照片管理", "👤 人員資料管理", "⚙️ 顯示設定"]
+    st.subheader("🛠️ 管理功能")
+    st.caption("依照日常管理流程排列：公告 → 照片 → 分組 → 人員 → 顯示設定；帳號管理僅完整管理權限可見。")
+    tab_labels = ["📢 公告管理", "🖼️ 全班照片", "👥 分組管理", "👤 人員管理", "⚙️ 顯示設定"]
     if is_full_admin:
         tab_labels.append("🔐 帳號管理")
     created_tabs = st.tabs(tab_labels)
-    group_tab, signup_tab, photo_tab, personnel_tab, display_settings_tab = created_tabs[:5]
+    announcement_tab, photo_tab, signup_tab, personnel_tab, display_settings_tab = created_tabs[:5]
     staff_tab = created_tabs[5] if is_full_admin else None
     with signup_tab:
         st.subheader("學生自行組隊結果")
@@ -1439,7 +1442,7 @@ elif role == "admin":
                     st.write(f"{student.get('seat_no')} 號｜{student.get('name')}")
         except Exception:
             st.error("無法讀取小組名單，請確認 group_signups 資料表設定。")
-    with group_tab:
+    with announcement_tab:
         st.subheader("📢 公告管理中心")
         st.caption("集中管理班級通知。草稿不會顯示給學生；排程公告會在指定時間自動出現在學生的「最新公告」。")
         announcement_categories = ["一般通知", "緊急通知", "拍攝異動", "活動與集合", "照片繳交", "分組通知", "畢冊進度"]
