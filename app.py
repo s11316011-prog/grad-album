@@ -1433,7 +1433,7 @@ elif role == "teacher":
 
 elif role == "admin":
     is_full_admin = identity.get("staff_role") in ("teacher", "super_admin")
-    st.subheader("🛠️ 管理功能")
+    st.subheader("🛠️ 管理員控制中心")
     st.caption("公告與學生頁面內容集中管理；其他功能依序排列。")
     tab_labels = ["📢 公告管理", "🖼️ 照片管理", "👥 分組管理", "👤 人員管理", "⚙️ 學生頁面設定"]
     if is_full_admin:
