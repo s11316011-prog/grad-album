@@ -1314,7 +1314,7 @@ elif role == "admin":
                             },
                             "updated_at": datetime.now(timezone.utc).isoformat(),
                         }, on_conflict="setting_key").execute()
-                        st.success("已套用原本指定的 Google Drive 資料夾。下一步會再驗證帳號是否有存取權限。")
+                        st.success("已套用新的 Google Drive 備份資料夾。下一步會驗證服務帳號的存取權限。")
                         st.rerun()
                     except Exception:
                         st.error("備份資料夾設定暫時無法儲存，請稍後重新整理再試。")
